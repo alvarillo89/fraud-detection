@@ -1,6 +1,7 @@
 #################################################################################################
 # Limpia el dataset eliminando columnas con más de un cierto porcentaje de ceros 
-# y de valores perdidos. 
+# y de valores perdidos.
+# También elimina todas las filas de la clase 0 con valores perdidos.
 #################################################################################################
 
 # Variables que determinan qué porcentajes eliminar:
@@ -25,9 +26,8 @@ data <- data.raw %>% select(-one_of(to_remove$variable))
 # ELIMINAR FILAS:
 
 # Eliminamos todas las filas con valores perdidos de la clase 0:
-set.seed(89)
 positive <- data %>% filter(isFraud == 1)
-negative <- data %>% filter(isFraud == 0) %>% drop_na() #%>% sample_n(nrow(positive))
+negative <- data %>% filter(isFraud == 0) %>% drop_na()
 data <- bind_rows(positive, negative)
 
 # Borrar objetos temporales para ahorrar memoria:
