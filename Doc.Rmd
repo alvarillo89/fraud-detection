@@ -1,0 +1,119 @@
+---
+title: "SIGE: Práctica 1"
+output: html_document
+---
+
+# Análisis exploratorio
+
+Inclusión de paquetes:
+
+```{r results='hide', message=FALSE, warning=FALSE}
+library(tidyverse)
+library(VIM)
+library(funModeling)
+library(caret)
+```
+
+Cargar los datos y mostrar una tabla con información resumida del dataset. Comenzaremos limpiando primero el dataset de transacciones, puesto que hacer el join con todos los datos a priori puede darno problemas:
+
+```{r, message=FALSE}
+data.raw <- read_csv('ieee-fraud-detection/train_transaction.csv')
+status <- df_status(data.raw)
+```
+
+Tamaño del dataset:
+
+```{r}
+dim(data.raw)
+```
+
+Mostrar el balanceo del dataset:
+
+```{r}
+table(data.raw$isFraud)
+prop.table(table(data.raw$isFraud))
+```
+
+# Preprocesamiento:
+
+## Variante 1:
+
+- Borrar columnas que tienen más de un 5% de NA (umbral habitual de "seguridad", visto en las referencias).
+- Borrar columnas con más de un 70% de 0.
+- Eliminar todos los ejemplos de la clase 0 con valores perdidos.
+- Muestrear aleatoriamente tantos ejemplos de la clase 0 como ejemplos hay de la clase 1 (balanceo).
+- Imputar valores perdidos:
+  - KNN para variables categóricas.
+  - Media para variable numéricas.
+
+```{r}
+# Excluir la variable objetivo:
+status <- status %>% filter(variable != 'isFraud')
+# Columnas con más de un 5% de NA:
+na_cols <- status %>% filter(p_na > 5) %>% select(variable)
+# Columnas con más de un 70% de 0:
+zero_cols <- status %>% filter(p_zeros > 70) %>% select(variable)
+# Eliminarlas del dataset:
+to_remove <- bind_rows(list(na_cols, zero_cols))
+data <- data.raw %>% select(-one_of(to_remove$variable))
+remove(status, na_cols, zero_cols, to_remove)
+df_status(data)
+```
+
+Aún así, sigue habiendo demasiados valores con NA como para imputar. Puesto que tenemos muchos ejemplos de la clase 0 (no fraude) eliminaremos todas las filas con valores perdidos. Solo imputaremos los de la clase 1 (de los cuales no nos conviene perder nigún ejemplo).
+También balancemos, tarde o temprano tenemos que hacerlo, por lo que lo hacemos ahora y así la imputación será más eficiente: 
+
+```{r}
+set.seed(89)
+positive <- data %>% filter(isFraud == 1)
+negative <- data %>% filter(isFraud == 0) %>% drop_na() %>% sample_n(nrow(positive))
+data <- bind_rows(positive, negative)
+remove(positive, negative) # Borrar los objetos temporales para ahorrar memoria
+prop.table(table(data$isFraud))
+```
+
+Por último, antes de imputar, convertimos las variables categóricas en factors, para que no haya problemas. También eliminamos la columna _TransactionID_ pues no nos proporciona información a la hora de predecir si es fraude o no:
+
+```{r}
+data <- data %>%
+  mutate(ProductCD = as.factor(ProductCD)) %>%
+  mutate(isFraud = as.factor(ifelse(isFraud == 1, 'Yes', 'No'))) %>%
+  mutate(card1 = as.factor(card1)) %>%
+  mutate(card2 = as.factor(card2)) %>%
+  mutate(card3 = as.factor(card3)) %>%
+  mutate(card4 = as.factor(card4)) %>%
+  mutate(card5 = as.factor(card5)) %>%
+  mutate(card6 = as.factor(card6)) %>%
+  select(-c(TransactionID))
+df_status(data)
+```
+
+Ahora sí, imputar los valores perdidos en la clase 1:
+- Para variables categóricas utilizamos KNN
+- Para las numéricas, la media:
+
+```{r, warning=F}
+data <- kNN(data, variable = c("card2", "card3", "card4", "card5", "card6"), k = 3, imp_var = F)
+NA2mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
+data <- replace(data, TRUE, lapply(data, NA2mean))
+df_status(data)
+```
+
+Sigue habiendo demasiadas columnas, intentaremos reducir la dimensionalidad. Buscaremos las variables que más correlación tienen con la variable objetivo:
+
+```{r}
+# Convertimos los factors a numeric para poder calcular la correlación:
+data.num <- data %>% mutate_if(is.factor, as.numeric)
+cor_target <- correlation_table(data.num, target='isFraud')
+```
+
+Quedarnos con las que tienen una correlación superior a 0.01:
+
+```{r}
+important_vars <- cor_target %>% filter(abs(isFraud) >= 0.02)
+data <- data %>% select(one_of(important_vars$Variable))
+```
+
+
+
+
