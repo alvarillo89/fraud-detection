@@ -1,42 +1,82 @@
 ---
-title: "SIGE: Práctica 1"
-output: html_document
+title: "Sistemas Inteligentes para la Gestión en la Empresa"
+subtitle: "Práctica 1: Preprocesamiento de datos y clasificación binaria"
+author: "Álvaro Fernández García"
+date: "Curso 2019-2020"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: simplex
+    highlight: tango
+    number_sections: true
+    df_print: paged
 ---
 
-# Análisis exploratorio
+---
 
-Inclusión de paquetes:
+Antes que nada, para el desarrollo de la práctica se utilizarán los siguientes paquetes de R:
+
+- `tidyverse`: para el manejo de los dataframes.
+- `funModeling` y `ggplot2`: para el análisis exploratorio de los datos.
+- `VIM`: para la imputación de variables perdidas.
+- `caret`: para entrenar y validar modelos de clasificación.
 
 ```{r results='hide', message=FALSE, warning=FALSE}
 library(tidyverse)
 library(VIM)
 library(funModeling)
+library(ggplot2)
 library(caret)
 ```
 
-Cargar los datos y mostrar una tabla con información resumida del dataset. Comenzaremos limpiando primero el dataset de transacciones, puesto que hacer el join con todos los datos a priori puede darno problemas:
+# Introducción
+
+TO DO
+
+# Modelos empleados
+
+TO DO
+
+- `Random Forest`
+
+# Análisis exploratorio
+
+Antes de empezar con los distintos experimentos debemos extraer información sobre los datos. Esto lo conseguimos gracias al *análisis exploratorio*. La información que se obtenga en este proceso, será de utilidad para definir el preprocesamiento que se realizará en el futuro.
+
+Comenzaremos analizando en primer lugar el dataset _transaction_. Cargamos el CSV, y con la función *df_status* del paquete _funModeling_ extraemos un resumen del dataset. En él se obtiene información como el procentaje de valores perdidos en cada columna, el porcentaje de ceros, el tipo de las columnas, el número de valores únicos, etcétera. En definitiva, proporciona información muy relevante para comprender mejor los datos.
 
 ```{r, message=FALSE}
 data.raw <- read_csv('ieee-fraud-detection/train_transaction.csv')
-status <- df_status(data.raw)
+as.data.frame(df_status(data.raw, F))
 ```
 
-Tamaño del dataset:
+Puede verse que muchas de las columnas tienen un alto porcentaje de valores perdidos (89%, 86%, e incluso 93%) y lo mismo sucede con los 0. Esto será algo a lo que nos trendremos que enfrentar en el preprocesamiento. También llama la atención la presencia de columnas con demasiados valores únicos, como por ejemplo, `TransactionDT` con 573349, o `card1`, una variable categórica con 13553 valores diferentes.  
+  
+A continuación, mostramos la dimensión del dataset:
 
 ```{r}
 dim(data.raw)
 ```
 
-Mostrar el balanceo del dataset:
+Está formado por casi 600.000 transacciones, con 394 variables (y estas no son todas las disponibles). Esta alta dimensionalidad puede suponer un grave problema a la hora de preprocesar y entrenar los modelos, por lo que habrá que aplicar técnicas para intentar reducirla.
+
+También es de vital importancia conocer el balanceo de las clases, es decir, cuantos ejemplos hay de la clase "Es fraude" y cuantos de la clase "No es fraude":
 
 ```{r}
 table(data.raw$isFraud)
 prop.table(table(data.raw$isFraud))
 ```
 
-# Preprocesamiento:
+Podemos ver que el desbalanceo es bastante acusado: el 96.5% de los datos pertenecen a la clase 0 ("No es fraude") mientras que solo el 3.5% pertenecen a la clase 1 ("Es fraude"). Esta situación puede llevar a que los modelos den demasiada importancia a la clase 0 y se olviden de la 1. Para solventar este problema, se deberán aplicar técnicas de balanceo.
 
-## Variante 1:
+---
+
+# Pruebas realizadas
+
+## Experimento 1
+
+A continuación se describe brevemente el preprocesamiento realizado en este primer experimento:
 
 - Borrar columnas que tienen más de un 5% de NA (umbral habitual de "seguridad", visto en las referencias).
 - Borrar columnas con más de un 70% de 0.
@@ -46,38 +86,28 @@ prop.table(table(data.raw$isFraud))
   - KNN para variables categóricas.
   - Media para variable numéricas.
 
-```{r}
-# Excluir la variable objetivo:
-status <- status %>% filter(variable != 'isFraud')
-# Columnas con más de un 5% de NA:
-na_cols <- status %>% filter(p_na > 5) %>% select(variable)
-# Columnas con más de un 70% de 0:
-zero_cols <- status %>% filter(p_zeros > 70) %>% select(variable)
-# Eliminarlas del dataset:
-to_remove <- bind_rows(list(na_cols, zero_cols))
-data <- data.raw %>% select(-one_of(to_remove$variable))
-remove(status, na_cols, zero_cols, to_remove)
-df_status(data)
-```
-
 Aún así, sigue habiendo demasiados valores con NA como para imputar. Puesto que tenemos muchos ejemplos de la clase 0 (no fraude) eliminaremos todas las filas con valores perdidos. Solo imputaremos los de la clase 1 (de los cuales no nos conviene perder nigún ejemplo).
 También balancemos, tarde o temprano tenemos que hacerlo, por lo que lo hacemos ahora y así la imputación será más eficiente: 
 
-```{r}
-set.seed(89)
-positive <- data %>% filter(isFraud == 1)
-negative <- data %>% filter(isFraud == 0) %>% drop_na() %>% sample_n(nrow(positive))
-data <- bind_rows(positive, negative)
-remove(positive, negative) # Borrar los objetos temporales para ahorrar memoria
-prop.table(table(data$isFraud))
-```
-
 Por último, antes de imputar, convertimos las variables categóricas en factors, para que no haya problemas. También eliminamos la columna _TransactionID_ pues no nos proporciona información a la hora de predecir si es fraude o no:
+
+Ahora sí, imputar los valores perdidos en la clase 1:
+- Para variables categóricas utilizamos KNN
+- Para las numéricas, la media:
+
+Sigue habiendo demasiadas columnas, intentaremos reducir la dimensionalidad. Buscaremos las variables que más correlación tienen con la variable objetivo:
+
+
+Quedarnos con las que tienen una correlación superior a 0.01:
+
+```{r}
+source('scripts/clean_na_zeros.R')
+source('scripts/random_downsample.R')
+```
 
 ```{r}
 data <- data %>%
   mutate(ProductCD = as.factor(ProductCD)) %>%
-  mutate(isFraud = as.factor(ifelse(isFraud == 1, 'Yes', 'No'))) %>%
   mutate(card1 = as.factor(card1)) %>%
   mutate(card2 = as.factor(card2)) %>%
   mutate(card3 = as.factor(card3)) %>%
@@ -85,34 +115,20 @@ data <- data %>%
   mutate(card5 = as.factor(card5)) %>%
   mutate(card6 = as.factor(card6)) %>%
   select(-c(TransactionID))
-df_status(data)
 ```
-
-Ahora sí, imputar los valores perdidos en la clase 1:
-- Para variables categóricas utilizamos KNN
-- Para las numéricas, la media:
 
 ```{r, warning=F}
-data <- kNN(data, variable = c("card2", "card3", "card4", "card5", "card6"), k = 3, imp_var = F)
-NA2mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
-data <- replace(data, TRUE, lapply(data, NA2mean))
-df_status(data)
+source('scripts/imputate.R')
+source('scripts/objetive_correlations.R')
 ```
 
-Sigue habiendo demasiadas columnas, intentaremos reducir la dimensionalidad. Buscaremos las variables que más correlación tienen con la variable objetivo:
+---
 
-```{r}
-# Convertimos los factors a numeric para poder calcular la correlación:
-data.num <- data %>% mutate_if(is.factor, as.numeric)
-cor_target <- correlation_table(data.num, target='isFraud')
-```
+# Referencias
 
-Quedarnos con las que tienen una correlación superior a 0.01:
-
-```{r}
-important_vars <- cor_target %>% filter(abs(isFraud) >= 0.02)
-data <- data %>% select(one_of(important_vars$Variable))
-```
+- https://datascienceplus.com/imputing-missing-data-with-r-mice-package/
+- https://www.guru99.com/r-random-forest-tutorial.html
+- [GitHub jgromero - sige2020: lending_club_seleccion.Rmd](https://github.com/jgromero/sige2020/blob/master/Pr%C3%A1cticas/01%20Selecci%C3%B3n%20de%20variables/lending_club_seleccion.Rmd)
 
 
 
