@@ -40,3 +40,6 @@ vignettes/*.pdf
 
 # Data:
 ieee-fraud-detection/
+
+# html output:
+*.html
