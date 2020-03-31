@@ -70,6 +70,15 @@ prop.table(table(data.raw$isFraud))
 
 Podemos ver que el desbalanceo es bastante acusado: el 96.5% de los datos pertenecen a la clase 0 ("No es fraude") mientras que solo el 3.5% pertenecen a la clase 1 ("Es fraude"). Esta situación puede llevar a que los modelos den demasiada importancia a la clase 0 y se olviden de la 1. Para solventar este problema, se deberán aplicar técnicas de balanceo.
 
+
+```{r, message=F}
+ggplot(data.raw) + 
+  geom_histogram(aes(x=TransactionAmt, fill=as.factor(isFraud))) +
+  labs(x = "Transaction Amount", y = "# Transactions", fill = "isFraud") +
+  scale_x_log10()
+```
+
+
 ---
 
 # Pruebas realizadas
@@ -129,6 +138,8 @@ source('scripts/objetive_correlations.R')
 - https://datascienceplus.com/imputing-missing-data-with-r-mice-package/
 - https://www.guru99.com/r-random-forest-tutorial.html
 - [GitHub jgromero - sige2020: lending_club_seleccion.Rmd](https://github.com/jgromero/sige2020/blob/master/Pr%C3%A1cticas/01%20Selecci%C3%B3n%20de%20variables/lending_club_seleccion.Rmd)
+- https://www.datacamp.com/community/tutorials/pca-analysis-r
+- http://r-statistics.co/Variable-Selection-and-Importance-With-R.html
 
 
 
