@@ -70,7 +70,7 @@ grid <- expand.grid(.mtry = best_mtry)
 
 # Empleamos paralelismo para que se entrene más rápido:
 library(doParallel)
-cl <- makePSOCKcluster(10)
+cl <- makePSOCKcluster(5)
 registerDoParallel(cl)
 
 rf <- train(isFraud ~ ., 
@@ -81,3 +81,6 @@ rf <- train(isFraud ~ .,
             tuneGrid = grid)
 
 stopCluster(cl)
+
+# Guardamos el modelo entrenado:
+saveRDS(rf, file = "models/rf_v1.rds")
