@@ -4,9 +4,7 @@
 #################################################################################################
 
 set.seed(89)
-positive <- data %>% filter(isFraud == 1)
-negative <- data %>% filter(isFraud == 0) %>% sample_n(nrow(positive))
-data <- bind_rows(positive, negative)
-
-# Borrar objetos temporales para ahorrar memoria:
-remove(positive, negative)
+# Convertir la variable objetivo a factor para poder hacer el downsample:
+data <- data %>% mutate(isFraud = as.factor(ifelse(isFraud == 1, 'Yes', 'No')))
+data <- downSample(x = data, y = data$isFraud)
+data$Class <- NULL

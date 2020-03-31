@@ -11,6 +11,9 @@ per_na <- 5
 #################################################################################################
 # ELIMINAR COLUMNAS:
 
+# Guardamos el status de funModeling:
+status <- df_status(data.raw, F)
+
 # Excluir la variable objetivo:
 status <- status %>% filter(variable != 'isFraud')
 
