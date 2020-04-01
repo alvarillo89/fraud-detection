@@ -1,5 +1,5 @@
 #################################################################################################
-# Entrena y valida un modelo de RandomForest para el problema
+# Entrena un modelo de RandomForest para el problema
 # de ieee-fraud detection.
 #################################################################################################
 
@@ -18,13 +18,13 @@ val <- data[-trainIndex, ]
 # Utilizaremos validación cruzada (5 folds) para escoger el número óptimo de árboles y 
 # el número de candidatos sorteados para alimentar el algoritmo (mtry).
 
+trControl <- trainControl(classProbs = T, method = "cv", number = 5)
+
 # Puesto que sigue habiendo demasiados datos como para hacer cv, utilizaremos para ello
 # un subconjunto del conjunto de train, con 5000 ejemplos de cada clase:
 train_reduced <- train %>%
    group_by(isFraud) %>%
    sample_n(5000)
-
-trControl <- trainControl(classProbs = T, method = "cv", number = 5)
 
 # Primero escogemos el valor óptimo de mtry:
 grid <- expand.grid(.mtry = c(1: 10))
@@ -37,9 +37,9 @@ rf_mtry <- train(isFraud ~ .,
                  tuneGrid = grid,
                  ntree = 100)
    
-# Con ese mejor valor, escogemos ahora el número de árboles optimo.
+# Con ese mejor valor, escogemos ahora el número de árboles óptimo.
 # Hay que hacerlo de esta manera por un bug de caret con el mtry y
-# otros parámetros del grid:
+# otros parámetros en el grid:
 grid <- expand.grid(.mtry = rf_mtry$bestTune$mtry)
 store_maxtrees <- list()
 for (ntree in c(250, 300, 350, 400, 450, 500, 550, 600, 800, 1000, 2000)) {
