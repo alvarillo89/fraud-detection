@@ -3,16 +3,6 @@
 # de ieee-fraud detection.
 #################################################################################################
 
-# Establecer la semilla para que los resultados sean reproducibles:
-set.seed(89)
-
-# Dividir el conjunto de datos en train y val con una proporcion 75-35, manteniendo en
-# cada uno la proporción de casos positivos y negativos:
-trainIndex <- createDataPartition(data$isFraud, p = .75, list = F, times = 1)
-train <- data[trainIndex, ]
-val <- data[-trainIndex, ]
-
-#################################################################################################
 # Elección de hiperparámetros
 
 # Utilizaremos validación cruzada (5 folds) para escoger el número óptimo de árboles y 
@@ -24,7 +14,8 @@ trControl <- trainControl(classProbs = T, method = "cv", number = 5)
 # un subconjunto del conjunto de train, con 5000 ejemplos de cada clase:
 train_reduced <- train %>%
    group_by(isFraud) %>%
-   sample_n(5000)
+   sample_n(5000) %>%
+   ungroup()
 
 # Primero escogemos el valor óptimo de mtry:
 grid <- expand.grid(.mtry = c(1: 10))
