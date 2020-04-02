@@ -21,6 +21,7 @@ Antes que nada, para el desarrollo de la práctica se utilizarán los siguientes
 - `funModeling` y `ggplot2`: para el análisis exploratorio de los datos.
 - `VIM`: para la imputación de variables perdidas.
 - `caret`: para entrenar y validar modelos de clasificación.
+- `pROC`: para calcular la curva ROC en la validación de los modelos.
 
 ```{r results='hide', message=FALSE, warning=FALSE}
 library(tidyverse)
@@ -28,6 +29,13 @@ library(VIM)
 library(funModeling)
 library(ggplot2)
 library(caret)
+library(pROC)
+```
+
+Incluimos también las funciones presentes en este script, las cuales se utilizarán en diferentes preprocesamientos:
+
+```{r}
+# source('scripts/utils.R')
 ```
 
 # Introducción
@@ -51,7 +59,7 @@ data.raw <- read_csv('ieee-fraud-detection/train_transaction.csv')
 as.data.frame(df_status(data.raw, F))
 ```
 
-Puede verse que muchas de las columnas tienen un alto porcentaje de valores perdidos (89%, 86%, e incluso 93%) y lo mismo sucede con los 0. Esto será algo a lo que nos trendremos que enfrentar en el preprocesamiento. También llama la atención la presencia de columnas con demasiados valores únicos, como por ejemplo, `TransactionDT` con 573349, o `card1`, una variable categórica con 13553 valores diferentes.  
+Puede verse que muchas de las columnas tienen un alto porcentaje de valores perdidos (89%, 86%, e incluso 93%) y lo mismo sucede con los 0. Esto será algo a lo que nos trendremos que enfrentar en el preprocesamiento. También llama la atención la presencia de columnas con demasiados valores únicos, como por ejemplo, `TransactionDT` con 573.349, o `card1`, una variable categórica con 13.553 valores diferentes.  
   
 A continuación, mostramos la dimensión del dataset:
 
@@ -70,49 +78,59 @@ prop.table(table(data.raw$isFraud))
 
 Podemos ver que el desbalanceo es bastante acusado: el 96.5% de los datos pertenecen a la clase 0 ("No es fraude") mientras que solo el 3.5% pertenecen a la clase 1 ("Es fraude"). Esta situación puede llevar a que los modelos den demasiada importancia a la clase 0 y se olviden de la 1. Para solventar este problema, se deberán aplicar técnicas de balanceo.
 
+Por último, graficaré la variable numérica que considero más relevantes dentro del dataset: `TransactionAmt` (la cantidad de dinero que se movió en la transacción), para intentar descubrir si existe algún patrón en esas cantidades que nos pueda ayudar a detectar si una transacción ha sido o no fraudulenta.
 
-```{r, message=F}
+Para la correcta visualización del histograma, se ha tenido que emplear una escala logarítmica en ambos ejes. Los datos crudos presentan una gran cola de valores en la parte derecha, que unida a la desproporción existente en las clases, hacía que fuese imposible extraer información del gráfico: 
+
+```{r, message=F, warning=F}
 ggplot(data.raw) + 
   geom_histogram(aes(x=TransactionAmt, fill=as.factor(isFraud))) +
   labs(x = "Transaction Amount", y = "# Transactions", fill = "isFraud") +
-  scale_x_log10()
+  scale_x_log10() + scale_y_log10()
 ```
 
+La mayoría de las transaccciones se concentran en torno a los 100$, aunque no parece que exista un patrón claro que diferencie a las fraudulentas de las que no lo son, más o menos siguen la misma proporción. Lo único que destaca es que, para cantidades pequeñas, la proporción de transacciones fraudulentas es similar a las no fraudulentas (no hay demasiado desbalanceo). Esto puede significar dos cosas: o es más frecuente que las transacciones fraudulentas impliquen movimiento de poco dinero, o simplemente es cosa de cómo se ha hecho el muestreo.
+
+A continuación, exploraremos el segundo dataset: `train_identity.csv`:
+
+TO DO
 
 ---
 
 # Pruebas realizadas
 
+En este apartado se describen los distintos experimentos realizados. Cada prueba está constituida por las siguientes fases:
+
+1. Preprocesamiento de los datos: esta es la única fase que varía de un experimento a otro. Cada prueba aplica un preprocesamiento distinto al conjunto.
+2. Entrenamiento de los modelos descritos en la [sección 2](#modelos-empleados). Para que la comparación de preprocesamientos (el principal objetivo de la práctica) sea justa, todos los modelos se entrenarán bajo las mismas condiciones.
+3. Validación de los modelos. Se evaluan y comparan los modelos entrenados en la fase anterior calculando la curva ROC y el área bajo la curva ROC. Estas métricas serán las que se utilicen para elegir el mejor preprocesamiento de todos los realizados y también para elegir el mejor modelo entrenado.
+
+> Nota: el código que realiza el preprocesamiento y entrenamiento de los modelos no se ha incluido en esta memoria para mantener su simplicidad y facilitar su lectura. En cada apartado se indica cuáles han sido los scripts ejecutados. Si desea consultar su contenido, puede encontrarlos bajo el directorio `scripts/`. Incluyen comentarios explicativos.
+
 ## Experimento 1
 
-A continuación se describe brevemente el preprocesamiento realizado en este primer experimento:
+A continuación se describe brevemente el preprocesamiento realizado en este primer experimento, en el que solo se ha utilizado el dataset `train_transaction.csv` (no se han incluido las columnas del dataset `identity`):
 
-- Borrar columnas que tienen más de un 5% de NA (umbral habitual de "seguridad", visto en las referencias).
-- Borrar columnas con más de un 70% de 0.
-- Eliminar todos los ejemplos de la clase 0 con valores perdidos.
-- Muestrear aleatoriamente tantos ejemplos de la clase 0 como ejemplos hay de la clase 1 (balanceo).
-- Imputar valores perdidos:
-  - KNN para variables categóricas.
-  - Media para variable numéricas.
+- Borrar columnas con más de un 5% de valores perdidos. Asumiendo que el dataset incluye 590.540 ejemplos, que una columna presente tan solo un 15% de valores perdidos, implica que 88.581 muestras no tienen valor para ese campo. Son demasiados valores como para poder imputarlos. Por este motivo, todas aquellas columnas con más de un 5% de valores perdidos son descartadas. Es una condición bastante restrictiva, pero teniendo en cuenta que hay que reducir la dimensionalidad del dataset (y que la capacidad computacional de mi máquina no es muy elevada) es la única manera de hacer el conjunto más manejable, aunque por supuesto, seguramente estemos perdiendo información relevante.
+- Borrar columnas con más de un 70% de 0. La justificación es la misma que en el paso anterior. Sacrificamos información a cambio de hacer el dataset abarcable para nuestra capacidad computacional. El procentaje se ha escogido teniendo en cuenta la información extraída en el análisis exploratorio (tabla `df_status`).
+- Eliminar todos los ejemplos de la clase 0 con valores perdidos. De esta clase se dispone de un gran número de muestras, por lo que si eliminamos todas aquellas con valores perdidos, aún continuamos disponiendo de un número bastante elevado de ellas. De la clase minoritaria no podemos permitirnos perder ejemplos, pero de la clase 0 sí.
+- Muestrear aleatoriamente tantos ejemplos de la clase 0 como ejemplos hay de la clase 1 (downsample). Con esto conseguimos balancear perfectamente el dataset.
+- Imputar valores perdidos para la clase 1:
+  - Para las variables categóricas se emplea la imputación KNN.
+  - Las variable numéricas, son imputadas con la media de cada columna. Posiblemente este no sea el método más sofisticado, pero ha sido el único abarcable computacionalmente. Previamente a este decisión se intentó utilizar le paquete `MICE` para la imputación, pero no llegué a obtener ningún resultado (el ordenador se quedaba colgado por demasiada carga de trabajo). 
+- Calcular la correlación de cada variable con la variable objetivo (`isFraud`) y eliminar todas aquellas con una correlación inferior a 0.05. Inicialmente el valor mínimo se fijó a 0.01, pero solo se eliminaba una columna, así que se aumentó para hacerlo más restrictivo.
 
-Aún así, sigue habiendo demasiados valores con NA como para imputar. Puesto que tenemos muchos ejemplos de la clase 0 (no fraude) eliminaremos todas las filas con valores perdidos. Solo imputaremos los de la clase 1 (de los cuales no nos conviene perder nigún ejemplo).
-También balancemos, tarde o temprano tenemos que hacerlo, por lo que lo hacemos ahora y así la imputación será más eficiente: 
-
-Por último, antes de imputar, convertimos las variables categóricas en factors, para que no haya problemas. También eliminamos la columna _TransactionID_ pues no nos proporciona información a la hora de predecir si es fraude o no:
-
-Ahora sí, imputar los valores perdidos en la clase 1:
-- Para variables categóricas utilizamos KNN
-- Para las numéricas, la media:
-
-Sigue habiendo demasiadas columnas, intentaremos reducir la dimensionalidad. Buscaremos las variables que más correlación tienen con la variable objetivo:
-
-
-Quedarnos con las que tienen una correlación superior a 0.01:
+Estos son los scripts ejecutados para preprocesar. Tras cada paso se muestra con un comentario como varía el tamaño del dataset:
 
 ```{r}
+# DIM(data) = 590.540 x 394
 source('scripts/clean_na_zeros.R')
+# DIM(data) = 578.728 x 52
 source('scripts/random_downsample.R')
+# DIM(data) = 41.326 x 52
 ```
+
+Antes de imputar, convertimos las variables categóricas en factors (para que el KNN impute las columnas correctamente). También eliminamos la columna `TransactionID` pues no nos proporciona información a la hora de predecir si es fraude o no:
 
 ```{r}
 data <- data %>%
@@ -129,13 +147,40 @@ data <- data %>%
 ```{r, warning=F}
 source('scripts/imputate.R')
 source('scripts/objetive_correlations.R')
+# DIM(data) = 41.326 x 31
 ```
+
+### Entrenar
+
+Una vez que se tiene el conjunto de datos preprocesado, el siguiente paso es entrenar ambos modelos (con los hiperparámetros escogidos y explicados en la [sección 2](#modelos-empleados)). Para entrenar se utilizará el 75% de los datos, guardando el 35% restante para validar los modelos:
+
+```{r}
+set.seed(89)
+trainIndex <- createDataPartition(data$isFraud, p = .75, list = F, times = 1)
+train <- data[trainIndex, ]
+val <- data[-trainIndex, ]
+remove(trainIndex)
+```
+
+**Regresión Logística**
+
+
+
+
+**Random Forest:**
+
+```{r}
+# source('scripts/train_rf.R')
+(rf <- readRDS('models/rf_v1.rds'))
+```
+
+Se obtiene un Accuracy en train de 0.766.
+
 
 ---
 
 # Referencias
 
-- https://datascienceplus.com/imputing-missing-data-with-r-mice-package/
 - https://www.guru99.com/r-random-forest-tutorial.html
 - [GitHub jgromero - sige2020: lending_club_seleccion.Rmd](https://github.com/jgromero/sige2020/blob/master/Pr%C3%A1cticas/01%20Selecci%C3%B3n%20de%20variables/lending_club_seleccion.Rmd)
 - https://www.datacamp.com/community/tutorials/pca-analysis-r
