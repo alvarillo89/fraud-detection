@@ -32,21 +32,49 @@ library(caret)
 library(pROC)
 ```
 
-Incluimos también las funciones presentes en este script, las cuales se utilizarán en diferentes preprocesamientos:
-
-```{r}
-# source('scripts/utils.R')
-```
-
 # Introducción
 
-TO DO
+El pricipal objetivo de esta práctica es la resolución de un problema de preprocesamiento y aprendizaje automático, al mismo tiempo que se estudia la importancia de realizar un preprocesamiento apropiado. Para ello, se utilizará el conjunto de datos [IEEE-CIS Fraud Detection](https://www.kaggle.com/c/ieee-fraud-detection/data) en el que se pretende predecir la probabilidad de que una determinada transacción online sea o no fraudulenta.
+
+Los datos están divididos en dos archivos `transaction` e `identity` (los cuales pueden unirse mediante la columna `TransactionID`). A continuación se describe el significado de cada una de las columnas de ambos datasets:
+
+- `isFraud`: variable objetivo: 1 es fraude, 0 no lo es.
+- `TransactionDT`: timedelta a partir de una fecha-hora de referencia dada (no es una marca de tiempo).
+- `TransactionAMT`: importe de pago de la transacción en USD.
+- `ProductCD`: código de producto, el producto para cada transacción.
+- `card1 - card6`: información de la tarjeta de pago, como el tipo de tarjeta, la categoría de la tarjeta, el banco emisor, el país, etc.
+- `addr`: dirección
+- `dist`: distancia
+- `P_ y R_ emaildomain`: dominio de correo electrónico del comprador y del destinatario
+- `C1-C14`: contadores, como cuántas direcciones se encuentran asociadas a la tarjeta de pago, etc. El significado real está enmascarado.
+- `D1-D15`: tiempo de espera, como por ejemplo, los días transcurridos entre la transacción anterior, etc.
+- `M1-M9`: coincidencias, en los nombres, en la tarjeta, la dirección, etc.
+- `Vxxx`: Vesta extrajo características ricas, incluyendo la clasificación, el conteo y otras relaciones de entidades.
+- Las variables del dataset `identity` denotan: información de conexión a la red (IP, ISP, Proxy, etc.) y firma digital (UA/navegador/os/versión, etc.) asociada a las transacciones.
+
+Todas las variables son numéricas, a excepción de las siguientes que son categóricas:
+
+- **Transaction:**
+  - ProductCD
+  - card1 - card6
+  - addr1, addr2
+  - P_emaildomain
+  - R_emaildomain
+  - M1 - M9
+
+- **Identity:**
+  - DeviceType
+  - DeviceInfo
+  - id_12 - id_36
 
 # Modelos empleados
 
-TO DO
+En este apartado se describen aquellos algoritmos de clasificación que se aplicarán para intentar predecir si una transacción bancaria es o no fraudulenta. Para que la comparación entre los preprocesamientos realizados sea justa, los modelos empleados en todas las pruebas son los mismos. También se mantienen los mismos hiperparámetros, los cuales han sido fijados con el conjunto datos preprocesado del [experimento 1](#experimento-1): 
 
-- `Random Forest`
+1. `Random Forest`: se trata de un metaestimador que ajusta un número determinado de árboles de decisión a varias submuestras. Se ha escogido este modelo para este problema simplemente por experiencia. En el pasado he trabajado en varios problemas de clasificación sobre conjuntos de datos muy similares a los que se obtienen tras preprocesar el _IEEE Fraud Detection_ (aproximadamente 40.000 datos, decenas de columnas y datos numéricos y categóricos). En esos problemas, Random Forest fue el método que mejores resultados obtuvo. En general, los _ensembles_ de clasificadores son bastante robustos y Random Forest es el ejemplo clásico de ensemble. Los hiperparámetros fijados han sido dos: el número de árboles (600) y el número de características a elegir en cada muestra (10). Para escogerlos, se ha hecho validación cruzada de 5 folds sobre una submuestra del conjunto de entrenamiento, con 5.000 ejemplos aleatorios de cada clase (para hacer su elección mucho más eficiente).
+2. `Extreme Gradient Boosting`: se trata de una implementación de `Gradient Boosting Decision Trees` diseñada teniendo en cuenta la velocidad y el rendimiento. Gradient Boosting es un enfoque en el que se añaden nuevos modelos (boosting) que predicen los residuos o errores de modelos anteriores y luego se suman para hacer la predicción final. Se llama Gradient Boosting porque utiliza el algoritmo del gradiente descendente para minimizar la pérdida al agregar nuevos modelos (que en este caso son árboles de decisión). Se ha escogido este modelo por su eficiencia y también porque está ampliamente utilizado en las competiciones de Kaggle con resultados excelentes, además de que puede manejar sin problemas variables categóricas e incluso valores perdidos. Su principal inconveniente es que presenta una gran cantidad de hiperparámetros, por lo que para escoger sus valores óptimos, se ha dejado que caret los elija de forma automática de entre los valores por defecto, utilizando un subjunto de 1.000 ejemplos aleatorios de cada clase. Consulte `scripts/train_xgb.R` para más información.
+
+**Nota:** antes de investigar sobre el Extreme Gradient Boosting, se apostó por utilizar una `Regresión Logística` con penalización L2. Siempre que se hace frente a un nuevo problema de aprendizaje automático, hay que empezar por la clase de modelos más simples, esto es, los lineales. El motivo por el que finalmente se descartó la Regresión Logística es porque este modelo es exclusivo para datos numéricos, y realizar el `one hot encoding` de variables categóricas con más de 70 valores únicos (incluso agrupando categorías poco frecuentes bajo una misma etiqueta) introducía demasiadas columnas en el dataset con varianza cero (por lo que los datos no podían normalizarse). En el script `scripts/train_lr.R` se encuentra la prueba que se realizó para el [experimento 1](#experimento-1), en la cual solo se obtuvo alrededor de un 60% de Accuracy en train.
 
 # Análisis exploratorio
 
@@ -59,7 +87,7 @@ data.raw <- read_csv('ieee-fraud-detection/train_transaction.csv')
 as.data.frame(df_status(data.raw, F))
 ```
 
-Puede verse que muchas de las columnas tienen un alto porcentaje de valores perdidos (89%, 86%, e incluso 93%) y lo mismo sucede con los 0. Esto será algo a lo que nos trendremos que enfrentar en el preprocesamiento. También llama la atención la presencia de columnas con demasiados valores únicos, como por ejemplo, `TransactionDT` con 573.349, o `card1`, una variable categórica con 13.553 valores diferentes.  
+Puede verse que muchas de las columnas tienen un alto porcentaje de valores perdidos (89%, 86%, e incluso 93%) y lo mismo sucede con los 0. Esto será algo a lo que nos trendremos que enfrentar en el preprocesamiento. También llama la atención la presencia de varibales categóricas con demasiados valores únicos, como por ejemplo `card1`, con 13.553 valores diferentes. O muchas columnas categóricas (como `M7`) que solo tienen como valores 0 o 1 (por lo que son interpretadas como lógicas).
   
 A continuación, mostramos la dimensión del dataset:
 
@@ -93,7 +121,22 @@ La mayoría de las transaccciones se concentran en torno a los 100$, aunque no p
 
 A continuación, exploraremos el segundo dataset: `train_identity.csv`:
 
-TO DO
+```{r, message=F}
+data.id.raw <- read_csv('ieee-fraud-detection/train_identity.csv')
+as.data.frame(df_status(data.id.raw, F))
+```
+
+Más o menos sigue en la misma línea que el otro dataset:
+  
+- Prácticamente todas las columnas (salvo `id_01` e `id_12`) tienen valores perdidos. El menor porcentaje es de 2.25 y 7 columnas tienen más de un 96% de NAs.
+- Nuevamente aparecen columnas categóricas con demasiados valores únicos, como `id_19` con 522.
+- También se observan variables categóricas y no categóricas con solo ceros o unos, como `id_35` o `id_38`.
+
+```{r}
+dim(data.id.raw)
+```
+
+Este dataset incluye 40 características nuevas a las 393 ya existentes (si no contamos el id). Por otro lado, reduce el número de filas, pues solo 144.233 ejemplos tienen informacion de identidad. Si ambos conjuntos de datos se uniese, se eliminarían 446.307 observaciones, por lo que puede resultar útil para reducir la dimensionalidad.
 
 ---
 
@@ -159,13 +202,7 @@ set.seed(89)
 trainIndex <- createDataPartition(data$isFraud, p = .75, list = F, times = 1)
 train <- data[trainIndex, ]
 val <- data[-trainIndex, ]
-remove(trainIndex)
 ```
-
-**Regresión Logística**
-
-
-
 
 **Random Forest:**
 
@@ -176,12 +213,53 @@ remove(trainIndex)
 
 Se obtiene un Accuracy en train de 0.766.
 
+---
+
+**Extreme Gradient Boosting:**
+
+```{r}
+# source('scripts/train_xgb.R')
+(xgb <- readRDS('models/xgb_v1.rds'))
+```
+
+Se obtiene un Accuracy en train de 0.782.
+
+### Validar
+
+Por último, para comparar ambos modelos y poder valorar la bondad del preprocesamiento realizado, se dibujarán las curvas ROC y se calcularán las áreas bajo la curva ROC sobre el conjunto de validación previamente reservado. Puesto que será una operación que se realizará varias veces a lo largo de esta memoria, se creará una función:
+
+```{r}
+validate <- function(model1, model2, valdata) {
+  # Predecir:
+  pred1 <- predict(model1, valdata, type = 'prob')
+  pred2 <- predict(model2, valdata, type = 'prob')
+  
+  # Calcular curvas ROC:
+  auc1 <- roc(valdata$isFraud, pred1[["Yes"]])
+  auc2 <- roc(valdata$isFraud, pred2[["Yes"]])
+  
+  # Mostar los plots para comparar:
+  plot.roc(auc1, type = "S", print.auc = T, print.auc.y = 0.4, col="tomato", xlim = c(1,0))
+  plot.roc(auc2, add = T, type = "S", print.auc = T, print.auc.y = 0.3, col="slateblue")
+  legend("bottomright", legend=c("rf", "xgb"), col=c("tomato", "slateblue"), lwd=2)
+}
+```
+
+
+```{r, message=F}
+validate(rf, xgb, val)
+```
+
+En este caso, el Extreme Gradient Boosting obtiene mejores resultados. Su curva ROC está ligeramente por encima de la del Random Forest lo que se refleja en un AUC de 0.87 frente a 0.84. No está nada mal para ser el primer experimento, teniendo en cuenta la cantidad de información sacrificada.
 
 ---
 
 # Referencias
 
+- [Reviewing IEEE-CIS Fraud Detection : Competition on Kaggle — XGBoost implementation — A Case Study](https://medium.com/@guildbilla/reviewing-ieee-cis-fraud-detection-competition-on-kaggle-top-2-solution-xgboost-b31e77b377b9)
 - https://www.guru99.com/r-random-forest-tutorial.html
+- https://towardsdatascience.com/understanding-random-forest-58381e0602d2
+- https://machinelearningmastery.com/gentle-introduction-xgboost-applied-machine-learning/
 - [GitHub jgromero - sige2020: lending_club_seleccion.Rmd](https://github.com/jgromero/sige2020/blob/master/Pr%C3%A1cticas/01%20Selecci%C3%B3n%20de%20variables/lending_club_seleccion.Rmd)
 - https://www.datacamp.com/community/tutorials/pca-analysis-r
 - http://r-statistics.co/Variable-Selection-and-Importance-With-R.html
