@@ -30,6 +30,7 @@ library(funModeling)
 library(ggplot2)
 library(caret)
 library(pROC)
+library(earth)
 ```
 
 # Introducción
@@ -166,8 +167,16 @@ A continuación se describe brevemente el preprocesamiento realizado en este pri
 Estos son los scripts ejecutados para preprocesar. Tras cada paso se muestra con un comentario como varía el tamaño del dataset:
 
 ```{r}
+data <- data.raw
 # DIM(data) = 590.540 x 394
-source('scripts/clean_na_zeros.R')
+args <- function() list(5)  # Argumentos para el script de abajo
+source('scripts/clean_na.R')
+# DIM(data) = 590.540 x 112
+args <- function() list(70)
+source('scripts/clean_zeros.R')
+# DIM(data) = 590.540 x 52
+args <- function() list(0)
+source('scripts/drop_rows_na_class.R')
 # DIM(data) = 578.728 x 52
 source('scripts/random_downsample.R')
 # DIM(data) = 41.326 x 52
@@ -188,6 +197,7 @@ data <- data %>%
 ```
 
 ```{r, warning=F}
+args <- function() c("card2", "card3", "card4", "card5", "card6")
 source('scripts/imputate.R')
 source('scripts/objetive_correlations.R')
 # DIM(data) = 41.326 x 31
@@ -251,6 +261,68 @@ validate(rf, xgb, val)
 ```
 
 En este caso, el Extreme Gradient Boosting obtiene mejores resultados. Su curva ROC está ligeramente por encima de la del Random Forest lo que se refleja en un AUC de 0.87 frente a 0.84. No está nada mal para ser el primer experimento, teniendo en cuenta la cantidad de información sacrificada.
+
+## Experimento 2
+
+```{r}
+data.full.raw <- inner_join(data.raw, data.id.raw, by = 'TransactionID')
+data <- data.full.raw
+args <- function() list(50)
+source('scripts/clean_na.R')
+data <- data %>% drop_na()
+source('scripts/random_downsample.R')
+# DIM(data) = 2940 x 305
+```
+
+
+```{r}
+data <- data %>%
+  mutate_if(is.logical, as.numeric) %>%
+  mutate_at(vars(contains('card')), as.factor) %>%
+  mutate(ProductCD = as.factor(ProductCD)) %>%
+  mutate_at(vars(contains('addr')), as.factor) %>%
+  mutate_at(vars(contains('emaildomain')), as.factor) %>%
+  mutate_at(vars(contains('Device')), as.factor) %>%
+  mutate_at(append(paste0("id_", 12:20)[-7], paste0("id_", 28:36)), as.factor) %>%
+  select(-c(TransactionID))
+```
+
+
+```{r}
+marsModel <- earth(isFraud ~ ., data = mutate_if(data, is.factor, as.numeric))
+evimp(marsModel)
+```
+
+```{r}
+data <- data.full.raw %>% 
+  select(c(isFraud, C1,C14, ProductCD,
+    D8, V338, TransactionAmt,
+    TransactionDT, V187,
+    R_emaildomain, V207)) %>%
+  mutate(ProductCD = as.factor(ProductCD)) %>%
+  mutate(R_emaildomain = as.factor(R_emaildomain))
+```
+
+
+```{r, warning = F}
+args <- function() list(0)
+source('scripts/drop_rows_na_class.R')
+# DIM(data) = 48.274 x 11
+source('scripts/random_downsample.R')
+args <- function() c("R_emaildomain")
+# DIM(data) = 22.636 x 11
+source('scripts/imputate.R')
+```
+
+### Entrenar
+
+```{r}
+set.seed(89)
+trainIndex <- createDataPartition(data$isFraud, p = .75, list = F, times = 1)
+train <- data[trainIndex, ]
+val <- data[-trainIndex, ]
+```
+
 
 ---
 
