@@ -1,6 +1,7 @@
 #################################################################################################
 # Selecciona aleatoriamente tantos ejemplos de la clase 0 como ejemplos de
 # la clase 1 hay en el dataset.
+# También convierte la variable objetivo a factor.
 #################################################################################################
 
 set.seed(89)
