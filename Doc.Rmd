@@ -22,6 +22,7 @@ Antes que nada, para el desarrollo de la práctica se utilizarán los siguientes
 - `VIM`: para la imputación de variables perdidas.
 - `caret`: para entrenar y validar modelos de clasificación.
 - `pROC`: para calcular la curva ROC en la validación de los modelos.
+- `earth`: para realizar la selección de características importantes.
 
 ```{r results='hide', message=FALSE, warning=FALSE}
 library(tidyverse)
@@ -264,16 +265,36 @@ En este caso, el Extreme Gradient Boosting obtiene mejores resultados. Su curva 
 
 ## Experimento 2
 
+Para este segundo experimento, se emplearán los dos conjuntos de datos disponibles: `transaction` e `identity`:
+
+* Unir ambos ficheros de datos según la columna `TransactionID`. Puesto que no todas las transacciones tienen asociada información de identidad, se realizará un _inner join_. Este eliminará todas aquellas filas del archivo `transaction` que no estén presentes en el dataset `identity`. De esta forma, se evita introducir aún más valores perdidos, al mismo tiempo que se contribuye a reducir la dimensionalidad de los datos (al menos en lo que al número de observaciones respecta).
+* Extraer una submuestra del conjunto obtenido tras realizar el _inner join_. Esta submuestra se crea para que el proceso que se aplica en el paso posterior sea abarcable computacionalmente. Para ello, se realiza lo siguiente:
+  * Eliminar columnas con más de un 50% de valores perdidos. Como ya se ha justificado en el experimento anterior, es prácticamente imposible tratar con éxito columnas con tantos valores perdidos, por lo que directamente no se tienen en cuenta. En este caso, la restricción es un poco más leve (antes se eliminaban columnas con más de un 5% de valores perdidos). Esto se ha hecho así para no descartar tantas columnas, solo las más inútiles.
+  * Eliminar todos los ejemplos con valores perdidos. De esta forma se obtiene una muestra pequeña (con valores originales, no imputados), al mismo tiempo que se hace frente a los valores perdidos.
+  * Balancear la submuestra utilizando el `random downsample` ya empleado en el experimento anterior (elegir de forma aleatoria tantos ejemplos de la clase 0 como ejemplos hay de la clase 1). Esto ayuda también a submuestrear aún más el conjunto.
+* Con el subconjunto, se extraen las columnas más relevantes utilizando el paquete `earth`. Dicho paquete utiliza un modelo de regresión lineal ajustado sobre los datos para estudiar la importancia relativa de cada columna. Devuelve una lista ordenada con las características más importantes.
+* Del conjunto original (el que se obtiene tras el _inner join_, sin submuestrear), nos quedamos solo con las columnas determinadas por el modelo de `earth` (las más relevantes) y la variable objetivo.
+* Se preprocesa el conjunto que contiene las características más relevantes. El principal objetivo es tratar los valores perdidos y balancear, por lo que se aplican los mismos pasos que se realizaron en el primer experimento:
+  * Borrar todos los ejemplos de la clase 0 con valores perdidos.
+  * Balancear con un `random downsample`.
+  * Imputar los valores perdidos de los ejemplos de la clase 1.
+  
+Realizar el _inner join_ y extraer el subconjunto:
+
 ```{r}
 data.full.raw <- inner_join(data.raw, data.id.raw, by = 'TransactionID')
+# DIM(data) = 144.233 x 434
 data <- data.full.raw
 args <- function() list(50)
 source('scripts/clean_na.R')
+# DIM(data) = 144.233 x 305
 data <- data %>% drop_na()
+# DIM(data) = 21.984 x 305
 source('scripts/random_downsample.R')
-# DIM(data) = 2940 x 305
+# DIM(data) = 2.940 x 305
 ```
 
+Convertir las variables que fueron cargadas como _logical_  a _numeric_ y las variables categóricas a _factors_. De esta forma, cada columna tendrá el tipo de dato apropiado. También se elimina la columna del id:
 
 ```{r}
 data <- data %>%
@@ -287,11 +308,14 @@ data <- data %>%
   select(-c(TransactionID))
 ```
 
+Estudiar la importancia de las columnas utilizando `earth`. Puesto que en el interior utiliza un modelo de regresión lineal, es necesario convertir los _factors_ a números. Si no se realiza esta conversion, `earth` realizará el _one hot encoding_ de forma automática. En ese caso, devolverá como variables importantes columnas del tipo *ColumnaCategórica_valor*, es decir, valores relevantes de columnas categóricas. Esto no nos interesa. Queremos saber la importancia de la columna completa, no de sus valores. Por eso convertimos a numérico:
 
 ```{r}
 marsModel <- earth(isFraud ~ ., data = mutate_if(data, is.factor, as.numeric))
 evimp(marsModel)
 ```
+
+Seleccionar, de los datos originales, las columnas anteriores:
 
 ```{r}
 data <- data.full.raw %>% 
@@ -303,18 +327,22 @@ data <- data.full.raw %>%
   mutate(R_emaildomain = as.factor(R_emaildomain))
 ```
 
+Tratar los valores perdidos y balancear:
 
 ```{r, warning = F}
+# DIM(data) = 144.233 x 11
 args <- function() list(0)
 source('scripts/drop_rows_na_class.R')
 # DIM(data) = 48.274 x 11
 source('scripts/random_downsample.R')
-args <- function() c("R_emaildomain")
 # DIM(data) = 22.636 x 11
+args <- function() c("R_emaildomain")
 source('scripts/imputate.R')
 ```
 
 ### Entrenar
+
+Al igual que en el experimento anterior, se utilizarán el 75% de los datos del nuevo conjunto para entrenar y el 35% para validar: 
 
 ```{r}
 set.seed(89)
@@ -323,6 +351,37 @@ train <- data[trainIndex, ]
 val <- data[-trainIndex, ]
 ```
 
+**Random Forest:**
+
+```{r}
+# source('scripts/train_rf.R')
+(rf <- readRDS('models/rf_v2.rds'))
+```
+
+Se obtiene un Accuracy en train de 0.9556.
+
+---
+
+**Extreme Gradient Boosting:**
+
+```{r}
+# source('scripts/train_xgb.R')
+(xgb <- readRDS('models/xgb_v2.rds'))
+```
+
+Se obtiene un Accuracy en train de 0.9574.
+
+### Validar
+
+Utilizamos la función definida en el experimento anterior para evaluar, con el conjunto de validación, los modelos entrenados:
+
+```{r, message=F}
+validate(rf, xgb, val)
+```
+
+Los resultados son muchísimo más satisfactorios que en el experimento anterior, puesto que casi se alcanza el 1 en el área bajo la curva ROC. Las columnas son muchas menos, pero más relevantes. Además, cabe destacar que, a excepción de `R_emaildomain` todas las columnas son del fichero `transaction`, por lo que puede deducirse que `identity` no aporta demasiada información relevante.
+
+Por otro lado, con respecto a los modelos, pese a que xgboost obtuvo resultados ligeramente mejores en train, en validación es random forest quien está ligeramente por encima.
 
 ---
 
