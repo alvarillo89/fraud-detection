@@ -23,6 +23,7 @@ Antes que nada, para el desarrollo de la práctica se utilizarán los siguientes
 - `caret`: para entrenar y validar modelos de clasificación.
 - `pROC`: para calcular la curva ROC en la validación de los modelos.
 - `earth`: para realizar la selección de características importantes.
+- `DMwR`: para el método SMOTE.
 
 ```{r results='hide', message=FALSE, warning=FALSE}
 library(tidyverse)
@@ -32,6 +33,7 @@ library(ggplot2)
 library(caret)
 library(pROC)
 library(earth)
+library(DMwR)
 ```
 
 # Introducción
@@ -383,6 +385,34 @@ Los resultados son muchísimo más satisfactorios que en el experimento anterior
 
 Por otro lado, con respecto a los modelos, pese a que xgboost obtuvo resultados ligeramente mejores en train, en validación es random forest quien está ligeramente por encima.
 
+## Experimento 3
+
+Datos:
+
+```{r}
+data.full.raw <- inner_join(data.raw, data.id.raw, by = 'TransactionID')
+```
+
+Convertir cada columna a su tipo de variable correcto. Eliminar el íd también:
+
+```{r}
+data.types <- data.full.raw %>%
+  mutate(isFraud = as.factor(ifelse(isFraud == 1, 'Yes', 'No'))) %>%
+  mutate_if(is.logical, as.numeric) %>%
+  mutate_at(vars(contains('card')), as.factor) %>%
+  mutate(ProductCD = as.factor(ProductCD)) %>%
+  mutate_at(vars(contains('addr')), as.factor) %>%
+  mutate_at(vars(contains('emaildomain')), as.factor) %>%
+  mutate_at(paste0("M", 1:9), as.factor) %>%
+  mutate_at(vars(contains('Device')), as.factor) %>%
+  mutate_at(paste0("id_", 12:36), as.factor) %>%
+  select(-c(TransactionID))
+```
+
+```{r, message=F, warning=F}
+source('scripts/pca.R' )
+```
+
 ---
 
 # Referencias
@@ -392,8 +422,12 @@ Por otro lado, con respecto a los modelos, pese a que xgboost obtuvo resultados 
 - https://towardsdatascience.com/understanding-random-forest-58381e0602d2
 - https://machinelearningmastery.com/gentle-introduction-xgboost-applied-machine-learning/
 - [GitHub jgromero - sige2020: lending_club_seleccion.Rmd](https://github.com/jgromero/sige2020/blob/master/Pr%C3%A1cticas/01%20Selecci%C3%B3n%20de%20variables/lending_club_seleccion.Rmd)
-- https://www.datacamp.com/community/tutorials/pca-analysis-r
 - http://r-statistics.co/Variable-Selection-and-Importance-With-R.html
+- https://www.datacamp.com/community/tutorials/pca-analysis-r
+- [STHDA - Principal Component Analysis in R](http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/118-principal-component-analysis-in-r-prcomp-vs-princomp/)
+- http://amunategui.github.io/smote/
+- https://rpubs.com/Mentors_Ubiqum/removing_outliers
+
 
 
 
