@@ -33,23 +33,25 @@ data <- data %>% mutate(isFraud = data.types$isFraud)
 # write.csv(data.smoted, 'ieee-fraud-detection/data_smoted.csv', row.names = FALSE)
 
 # Cargamos los datos generados por la ejecución anterior:
-data <- read_csv('ieee-fraud-detection/data_smoted.csv')
+data.smoted <- read_csv('ieee-fraud-detection/data_smoted.csv')
+data.smoted <- data.smoted %>% mutate_if(is.character, as.factor)
 
 # El siguiente paso es eliminar los outliers detectados en el EDA en el 
 # campo TransactionAmnt:
 
-outliers <- boxplot(data$TransactionAmt, plot=FALSE)$out
-data <- data[-which(data$TransactionAmt %in% outliers),]
+outliers <- boxplot(data.smoted$TransactionAmt, plot=FALSE)$out
+data.smoted <- data.smoted[-which(data.smoted$TransactionAmt %in% outliers),]
 
 # Antes de realizar el PCA, hay que eliminar todas aquellas columnas cuya varianza sea 0.
 # PCA requiere centrar y escalar los datos, y esto no es posible si alguna columna tiene
 # varianza 0:
 
-data <- data[, -which(apply(data, 2, var)==0)]
+data.smoted <- data.smoted[, -which(apply(data.smoted, 2, var)==0)]
 
 # Por último, aplicamos PCA:
+data <- data.smoted
 data$isFraud <- NULL
 data.pca <- prcomp(data, center = T, scale. = T)
 
 # Borrar objetos temporales para ahorrar memoria:
-remove(outliers, NA2median, data.smoted, data)
+remove(outliers, NA2median, data, data.types)
