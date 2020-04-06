@@ -6,7 +6,7 @@
 
 categorical = args()
 
-data <- kNN(data, variable = categorical, k = 3, imp_var = F)
+data <- VIM::kNN(data, variable = categorical, k = 3, imp_var = F)
 NA2mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
 data <- replace(data, TRUE, lapply(data, NA2mean))
 
