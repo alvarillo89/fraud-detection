@@ -70,6 +70,8 @@ Todas las variables son numéricas, a excepción de las siguientes que son categ
   - DeviceType
   - DeviceInfo
   - id_12 - id_36
+  
+Se realizarán un total de **3 experimentos**, cada uno de ellos, con un preprocesamiento diferente.
 
 # Modelos empleados
 
@@ -122,6 +124,14 @@ ggplot(data.raw) +
 ```
 
 La mayoría de las transaccciones se concentran en torno a los 100$, aunque no parece que exista un patrón claro que diferencie a las fraudulentas de las que no lo son, más o menos siguen la misma proporción. Lo único que destaca es que, para cantidades pequeñas, la proporción de transacciones fraudulentas es similar a las no fraudulentas (no hay demasiado desbalanceo). Esto puede significar dos cosas: o es más frecuente que las transacciones fraudulentas impliquen movimiento de poco dinero, o simplemente es cosa de cómo se ha hecho el muestreo.
+
+TODO outliers
+
+```{r}
+ggplot(data.raw, aes(y=TransactionAmt)) +
+  geom_boxplot() + scale_y_log10()
+```
+
 
 A continuación, exploraremos el segundo dataset: `train_identity.csv`:
 
@@ -267,7 +277,7 @@ En este caso, el Extreme Gradient Boosting obtiene mejores resultados. Su curva 
 
 ## Experimento 2
 
-Para este segundo experimento, se emplearán los dos conjuntos de datos disponibles: `transaction` e `identity`:
+Para este segundo experimento, se emplearán los dos conjuntos de datos disponibles: `transaction` e `identity`. Estos son los pasos realizados:
 
 * Unir ambos ficheros de datos según la columna `TransactionID`. Puesto que no todas las transacciones tienen asociada información de identidad, se realizará un _inner join_. Este eliminará todas aquellas filas del archivo `transaction` que no estén presentes en el dataset `identity`. De esta forma, se evita introducir aún más valores perdidos, al mismo tiempo que se contribuye a reducir la dimensionalidad de los datos (al menos en lo que al número de observaciones respecta).
 * Extraer una submuestra del conjunto obtenido tras realizar el _inner join_. Esta submuestra se crea para que el proceso que se aplica en el paso posterior sea abarcable computacionalmente. Para ello, se realiza lo siguiente:
@@ -387,13 +397,20 @@ Por otro lado, con respecto a los modelos, pese a que xgboost obtuvo resultados 
 
 ## Experimento 3
 
-Datos:
+Para este último experimento, también se emplearán los dos ficheros disponibles: `transaction` e `identity`. A continuación se describen con detalle los pasos seguidos:
 
-```{r}
-data.full.raw <- inner_join(data.raw, data.id.raw, by = 'TransactionID')
-```
+- Realizar el _inner join_ para unir ambos dataframes.
+- Efectuar sobre el conjunto de datos un _análisis de componentes principales (PCA)_. Este es uno de los métodos más conocidos para reducir el número de características de un dataset (algo muy necesario en este conjunto de datos). Esta técnica ayuda a ver la "forma" general de los datos, identificando qué grupos de muestras son similares entre sí y calculando qué variables hacen que un grupo sea diferente de otro. Las _componentes principales_ no son más que direcciones en las que los datos están más esparcidos, es decir, donde se encuentra la mayor parte de la varianza. De esta manera, se transforma un conjunto de variables $X$ correlacionadas sobre muestras $Y$ en un conjunto de componentes principales $P$ no correlacionadas sobre las mismas muestras. Previamente a la aplicación de esta técnica, es necesario preparar los datos:
+  - PCA solo trabaja con datos numéricos. Las variables categóricas deberían convertirse con _one hot encoding_ para que pudiesen ser procesadas por esta técnica. No obstante, estas columnas tienen cientos de valores diferentes y, teniendo en cuenta que _one hot encoding_ crea una columna por cada valor diferente, el dataset resultante tendría miles de columnas, algo inmanejable. Por tanto, para este experimento, solo se tendrán en cuenta las columnas numéricas. Esta decisión conlleva una pérdida de información considerable (concretamente se eliminan 46 columnas), pero es la única forma de poder aplicar esta técnica.
+  - Eliminar columnas con más de un 50% de valores perdidos. La justificación es la misma que en el resto de experimentos: es prácticamente imposible tratar con éxito características con tantos valores perdidos.
+  - Imputar los valores perdidos de las columnas restantes utilizando la mediana. En experimentos anteriores se ha utilizado la media. No obstante, para este se ha decidido utilizar la mediana puesto que, según referencias, funciona mejor cuando los datos tienen outliers (y en el análisis exploratorio se ha visto que los datos presentan algunos de ellos). 
+  - Balancear el dataset mediante un _upsamplig_, es decir, generando ejemplos artificiales de la clase minoritaria. PCA transforma los datos, por lo que previamente a su aplicación se deben balancear. El downsampling provoca que el número de observaciones sea reducido (aproximadamente 22.000, como en el ejemplo anterior). Para evitar esto, en lugar de eliminar ejemplos de la clase mayoritaria, se crearan ejemplos nuevos de la clase minoritaria, balanceando sin perder tantas filas. Para generar los nuevos ejemplos, se ha utilizado `SMOTE`, una de las técnicas más conocidas y empleadas para este fin.
+  - Eliminar outliers. Puesto que PCA trabaja con la varianza de los datos, eliminar los outliers detectados en el campo `TransactionAmt`, puede ayudar a mejorar los resultados (reduciendo la varianza).
+  - Eliminar columnas con varianza 0. Estas impiden centrar y escalar los datos (restando la media y dividiendo entre la desviación estándar), un paso previo obligatorio para realizar correctamente el PCA.
+- Una vez realizado el PCA, se debe escoger el número de componentes principales que se usarán finalmente para entrenar los modelos. Para ello, hay que buscar un equilibrio entre el número de componentes principales y el porcentaje de la varianza que explican. En este caso, con 20 componentes principales se explica el 80% de la varianza (es decir, el 80% de los datos) lo que parece una proporción razonable.
+- Como 20 variables aún es demasiado, se intentará reducir aún más su número eliminando aquellas columnas que no estén demasiado correladas con la variable objetivo, de la misma forma que se hizo en el primer experimento (con un umbral de 0.05).
 
-Convertir cada columna a su tipo de variable correcto. Eliminar el íd también:
+Partiendo de ambos datasets unidos, se convierte cada columna a su tipo de variable correcto. Todas numéricas salvo las columnas categóricas, que serán `factors`. De esta forma, se nos facilitarán los pasos posteriores:
 
 ```{r}
 data.types <- data.full.raw %>%
@@ -409,9 +426,81 @@ data.types <- data.full.raw %>%
   select(-c(TransactionID))
 ```
 
+Se ejecuta todo el preprocesamiento asociado al PCA y el propio PCA:
+
 ```{r, message=F, warning=F}
 source('scripts/pca.R' )
 ```
+
+Estudiar los resultados del PCA. Cada columna representa una componente principal. La fila _Proportion of Variance_ muestra el porcentaje de la varianza explicado por esa componente y la fila _Cumulative Proportion_ el porcentaje explicado por esa componente junto a todas las demás. Como puede verse, hasta la PC20 se explica el 80.3% de los datos.
+
+```{r}
+as.data.frame(summary(data.pca)$importance)
+```
+
+Quedarnos con los datos transformados de las 20 primeras componentes y volver a añadir la variable objetivo:
+
+```{r}
+data <- as.data.frame(data.pca$x[, 1:20]) %>%
+  mutate(isFraud = data.smoted$isFraud)
+# DIM(data) = 42.359 x 21
+```
+
+Comprobar el balanceo: no es 50-50 pero sí muy similar.
+
+```{r}
+prop.table(table(data$isFraud))
+```
+
+Eliminar columnas cuya correlación con la variable objetivo es inferior a 0.05 (en valor absoluto):
+
+```{r}
+source('scripts/objetive_correlations.R')
+# DIM(data) = 42.359 x 14
+```
+
+### Entrenar
+
+Al igual que en el resto de experimentos, se utilizarán el 75% de los datos del nuevo conjunto para entrenar y el 35% para validar: 
+
+```{r}
+set.seed(89)
+trainIndex <- createDataPartition(data$isFraud, p = .75, list = F, times = 1)
+train <- data[trainIndex, ]
+val <- data[-trainIndex, ]
+```
+
+**Random Forest:**
+
+```{r}
+# source('scripts/train_rf.R')
+(rf <- readRDS('models/rf_v3.rds'))
+```
+
+Se obtiene un Accuracy en train de 0.8654.
+
+---
+
+**Extreme Gradient Boosting:**
+
+```{r}
+# source('scripts/train_xgb.R')
+(xgb <- readRDS('models/xgb_v3.rds'))
+```
+
+Se obtiene un Accuracy en train de 0.8417.
+
+### Validar
+
+Se evalúan, con el conjunto de validación, los modelos entrenados:
+
+```{r, message=F}
+validate(rf, xgb, val)
+```
+
+En general, los resultados son significativamente mejores que en el primer experimento (donde se alcanzó un AUC de 0.87), pero ligeramente peores que en el segundo (donde se obtuvo un AUC de 0.99). Aun así, las métricas evidencian que la transformación realizada por el PCA y la posterior selección de componentes, junto a la generación de ejemplos con SMOTE, han sido buenas defisiones, pues los resultados son bastante satisfactorios.
+
+Con respecto a los modelos, Random Forest vuelve a estar ligeramente por encima de Extreme Gradient Boosting (AUC de 0.95 frente a 0.93).
 
 ---
 
@@ -427,6 +516,7 @@ source('scripts/pca.R' )
 - [STHDA - Principal Component Analysis in R](http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/118-principal-component-analysis-in-r-prcomp-vs-princomp/)
 - http://amunategui.github.io/smote/
 - https://rpubs.com/Mentors_Ubiqum/removing_outliers
+- [Stackexchange - CrossValidated: replacement by mean vs median](https://stats.stackexchange.com/questions/143700/which-is-better-replacement-by-mean-and-replacement-by-median)
 
 
 
