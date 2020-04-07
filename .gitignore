@@ -43,3 +43,6 @@ ieee-fraud-detection/
 
 # html output:
 *.html
+
+# CSV output
+*.csv
