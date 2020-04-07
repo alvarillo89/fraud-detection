@@ -117,21 +117,28 @@ Por último, graficaré la variable numérica que considero más relevantes dent
 Para la correcta visualización del histograma, se ha tenido que emplear una escala logarítmica en ambos ejes. Los datos crudos presentan una gran cola de valores en la parte derecha, que unida a la desproporción existente en las clases, hacía que fuese imposible extraer información del gráfico: 
 
 ```{r, message=F, warning=F}
+# Histograma con los datos originales:
 ggplot(data.raw) + 
   geom_histogram(aes(x=TransactionAmt, fill=as.factor(isFraud))) +
-  labs(x = "Transaction Amount", y = "# Transactions", fill = "isFraud") +
+  labs(title = "Original data", x = "Transaction Amount", y = "# Transactions", fill = "isFraud")
+
+# Histograma con escala logrítmica en el eje X:
+ggplot(data.raw) + 
+  geom_histogram(aes(x=TransactionAmt, fill=as.factor(isFraud))) +
+  labs(title = "Log scale", x = "Transaction Amount", y = "# Transactions", fill = "isFraud") +
   scale_x_log10() + scale_y_log10()
 ```
 
 La mayoría de las transaccciones se concentran en torno a los 100$, aunque no parece que exista un patrón claro que diferencie a las fraudulentas de las que no lo son, más o menos siguen la misma proporción. Lo único que destaca es que, para cantidades pequeñas, la proporción de transacciones fraudulentas es similar a las no fraudulentas (no hay demasiado desbalanceo). Esto puede significar dos cosas: o es más frecuente que las transacciones fraudulentas impliquen movimiento de poco dinero, o simplemente es cosa de cómo se ha hecho el muestreo.
 
-TODO outliers
+Si nos fijamos en el histograma de los datos originales, en la parte derecha puede verse un gran hueco sin ninguna barra (a esto se refería la _gran cola de valores en la derecha_). Ese hueco representa que hay muy pocas transacciones en las que la cantidad de dinero que se transfirió fue muy elevada. Esto puede llevarnos a pensar que muchas de esas transacciones son _outliers_ (valores atípicos). Para estar completamente seguros, se dibujará un diagrama de caja sobre la columna `TransactionAmt`:
 
 ```{r}
 ggplot(data.raw, aes(y=TransactionAmt)) +
   geom_boxplot() + scale_y_log10()
 ```
 
+Efectivamente, los datos presentan una serie de _outliers_: tanto transferencias de sumas muy elevadas, como transacciones de muy poco dinero. Por otra parte, la gran mayoría de transacciones se concentran en sumas de en torno a los 100$ (tal y como evidenciaba el histograma).
 
 A continuación, exploraremos el segundo dataset: `train_identity.csv`:
 
@@ -268,9 +275,15 @@ validate <- function(model1, model2, valdata) {
 }
 ```
 
+Incluimos también la función presente en este script, la cual permite mostrar la matriz de confusión y las métricas más relevantes:
+
+```{r}
+source('scripts/plot_metrics.R')
+```
 
 ```{r, message=F}
 validate(rf, xgb, val)
+plot_metrics(rf, xgb, val)
 ```
 
 En este caso, el Extreme Gradient Boosting obtiene mejores resultados. Su curva ROC está ligeramente por encima de la del Random Forest lo que se refleja en un AUC de 0.87 frente a 0.84. No está nada mal para ser el primer experimento, teniendo en cuenta la cantidad de información sacrificada.
@@ -352,6 +365,10 @@ args <- function() c("R_emaildomain")
 source('scripts/imputate.R')
 ```
 
+```{r, include=F}
+lev <- levels(data$ProductCD)
+```
+
 ### Entrenar
 
 Al igual que en el experimento anterior, se utilizarán el 75% de los datos del nuevo conjunto para entrenar y el 35% para validar: 
@@ -385,10 +402,11 @@ Se obtiene un Accuracy en train de 0.9574.
 
 ### Validar
 
-Utilizamos la función definida en el experimento anterior para evaluar, con el conjunto de validación, los modelos entrenados:
+Utilizamos las funciones definidas en el experimento anterior para evaluar, con el conjunto de validación, los modelos entrenados:
 
 ```{r, message=F}
 validate(rf, xgb, val)
+plot_metrics(rf, xgb, val)
 ```
 
 Los resultados son muchísimo más satisfactorios que en el experimento anterior, puesto que casi se alcanza el 1 en el área bajo la curva ROC. Las columnas son muchas menos, pero más relevantes. Además, cabe destacar que, a excepción de `R_emaildomain` todas las columnas son del fichero `transaction`, por lo que puede deducirse que `identity` no aporta demasiada información relevante.
@@ -496,11 +514,51 @@ Se evalúan, con el conjunto de validación, los modelos entrenados:
 
 ```{r, message=F}
 validate(rf, xgb, val)
+plot_metrics(rf, xgb, val)
 ```
 
 En general, los resultados son significativamente mejores que en el primer experimento (donde se alcanzó un AUC de 0.87), pero ligeramente peores que en el segundo (donde se obtuvo un AUC de 0.99). Aun así, las métricas evidencian que la transformación realizada por el PCA y la posterior selección de componentes, junto a la generación de ejemplos con SMOTE, han sido buenas defisiones, pues los resultados son bastante satisfactorios.
 
 Con respecto a los modelos, Random Forest vuelve a estar ligeramente por encima de Extreme Gradient Boosting (AUC de 0.95 frente a 0.93).
+
+---
+
+# Test y conclusión
+
+```{r, message=F}
+test.raw <- read_csv('ieee-fraud-detection/test_transaction.csv')
+test.id.raw <- read.csv('ieee-fraud-detection/test_identity.csv')
+test.full <- left_join(test.raw, test.id.raw, by = 'TransactionID')
+```
+
+```{r}
+data <- test.full %>% 
+  select(c(C1, C14, ProductCD,
+    D8, V338, TransactionAmt,
+    TransactionDT, V187,
+    R_emaildomain, V207)) %>%
+  mutate(ProductCD = as.factor(ProductCD)) %>%
+  mutate(R_emaildomain = as.factor(R_emaildomain))
+
+data$ProductCD <- factor(data$ProductCD, levels = lev)
+
+source('scripts/imputateV2.R')
+```
+
+```{r}
+final.model <- readRDS('models/rf_v2.rds')
+pred <- predict(final.model, data, type = 'prob')
+```
+
+```{r}
+results <- test.full %>%
+  select(TransactionID) %>%
+  mutate(isFraud = pred$Yes)
+
+write_csv(results, 'res.csv')
+```
+
+AUC = 0.752754
 
 ---
 
