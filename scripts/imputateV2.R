@@ -1,3 +1,9 @@
+#################################################################################################
+# Imputación utilizada en test, debido a KNN no puede emplearse para imputar variables
+# catégoricas. Imputa estas últimas de forma aleatoria, atendiendo a una distribución
+# de probablidad obtenida a partir del porcentaje de aparción de cada level del factor.
+#################################################################################################
+
 library(Hmisc)
 
 set.seed(89)
