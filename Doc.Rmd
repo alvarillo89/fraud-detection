@@ -681,6 +681,12 @@ Se obtiene un **AUC de 0.786960**. Como era de esperar se obtienen resultados me
 
 # Conclusión
 
+En todos los experimentos, los datos, modelos e hiperparámetros han sido los mismos. Sin embargo, los resultados obtenidos han sido muy diferentes. Esto pone de manifiesto la importancia de realizar un buen preprocesamiento de los datos, y su influencia sobre las métricas finales. 
+
+Cuando se afronta un nuevo promblema de aprendizaje automático, se le suele prestar una especial atención al ajuste de los modelos (qué clase de funciones utilizar, cómo fijar los hiperparámetros, que métricas se emplearán para evaluar, si se realizará o no validación cruzada, etcétera). Es cierto que todo eso es importante, pero no se debe olvidar que un modelo de aprendizaje automático no es nada sin datos, y esos datos deben tener la calidad suficiente. Esta práctica demuestra que en el mundo real los datos suelen tener una calidad extremadamente pobre, y que si se desea construir un buen clasificador que ayude a resolver un problema, es de vital importancia dedicarle tiempo suficiente al estudio, preparado y preprocesamiento de los conjuntos de datos. Es un proceso que no puede desligarse de los sistemas inteligentes y que requiere tanto o más atención que el resto.
+
+Además, la practica también demuestra que muchas veces la capacidad computacional es una traba para resolver problemas de esta índole. Procesar grandes cantidades de datos require de una gran capacidad de cómputo, capacidad que la que no siempre se dispone, limitando en ocasiones las técnicas que pueden aplicarse. En esos casos hay que usar el ingenio y buscar alternativas menos costosas que permitan avanzar en la resolución del problema: emplear técnicas menos sofisticadas pero más eficientes, reducir la dimensionalidad, trabajar con submuestras, etcétera. En la mayoría de los casos se deberá sacrificar información, pero la clave está en encontrar un equilibrio: sacrificar la información suficiente como para que se pueda resolver el problema con los recursos disponibles.
+
 ---
 
 # Referencias
