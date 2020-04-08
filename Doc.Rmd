@@ -286,7 +286,16 @@ validate(rf, xgb, val)
 plot_metrics(rf, xgb, val)
 ```
 
-En este caso, el Extreme Gradient Boosting obtiene mejores resultados. Su curva ROC está ligeramente por encima de la del Random Forest lo que se refleja en un AUC de 0.87 frente a 0.84. No está nada mal para ser el primer experimento, teniendo en cuenta la cantidad de información sacrificada.
+De todas las métricas calculadas, se utilizarán _AUC_, _Sensitivity_ y _Specificity_ para discutir los resultados. También se le prestará atención (aunque en menor medida), al _coeficiente Kappa de Cohen_:
+
+- El área bajo la curva roc es una forma de resumir numéricamente la curva ROC. Cuanto más cercano a 1 sea su valor, mejor desempeño tendrá el clasificador. Es la métrica que se emplea en Kaggle para clasificar los modelos de la competición, por lo que es muy relevante para el problema.
+- Sensitivity: es equivalente al _Recall_, e intuitivamente, es la capacidad del clasificador de encontrar todos los ejemplos positivos, en este caso, las transacciones fraudulentas.
+- Specificity: para un problema binario, es equivalente al cálculo del _Recall_ pero para la clase negativa. Intuitivamente es la capacidad del clasificador de encontrar todos los ejemplos negativos, en este caso, las transacciones no fraudulentas.
+- Kappa: mide el nivel de concordancia entre dos anotadores en un problema de clasificación. Intuitivamente, representa cuán cerca las instancias clasificadas por el clasificador coinciden con las etiquetas reales. Es más útil que el accuracy, sobre todo, en problemas desbalanceados.
+
+En este caso, puede verse que todas las métricas de `xgboost` son superiores a las de `Random Forest`, por lo que, para este primer experimento, el mejor clasificador es `Extreme Gradient Boosting`. Obtiene un AUC de 0.87 y, puesto que la _Sensitivity_ es mayor que la _Specificity_, podemos deducir que encuentra más fácilmente los fraudes (algo bastante positivo, pues es el principal objetivo de este problema: detectar transacciones fraudulentas). Por último, con respecto al Kappa, 0.59 es, según las referencias, una concordancia moderada.
+
+Para tratarse del primer experimento y, teniendo en cuenta que el preprocesado aplicado no es demasiado sofisticado, un AUC de 0.87 es realtivamente bueno, aunque aún puede mejorarse.
 
 ## Experimento 2
 
@@ -409,9 +418,9 @@ validate(rf, xgb, val)
 plot_metrics(rf, xgb, val)
 ```
 
-Los resultados son muchísimo más satisfactorios que en el experimento anterior, puesto que casi se alcanza el 1 en el área bajo la curva ROC. Las columnas son muchas menos, pero más relevantes. Además, cabe destacar que, a excepción de `R_emaildomain` todas las columnas son del fichero `transaction`, por lo que puede deducirse que `identity` no aporta demasiada información relevante.
+En este experimento, Random Forest supera ligeramente a xgboost (pese a que este último obtuvo un Accuracy un poco mayor en train). Todas sus metricas son levemente superiores, salvo _Specificity_. Esto significa que Random Forest encuentra mejor los fraudes y xgboost los no fraudes, aunque a grandes rasgos, Random Forest clasifica un poco mejor. Obtiene un Kappa de 0.916, que según las referencias, es casi perfecto.
 
-Por otro lado, con respecto a los modelos, pese a que xgboost obtuvo resultados ligeramente mejores en train, en validación es random forest quien está ligeramente por encima.
+En definitiva, los resultados son de lejos, muchísimo más satisfactorios que en el experimento anterior, puesto que casi se alcanza el 1 en el área bajo la curva ROC (0.992). Las columnas son muchas menos, pero más relevantes. Además, cabe destacar que, a excepción de `R_emaildomain` todas las columnas son del fichero `transaction`, por lo que puede deducirse que `identity` no aporta demasiada información relevante.
 
 ## Experimento 3
 
@@ -450,6 +459,11 @@ Se ejecuta todo el preprocesamiento asociado al PCA y el propio PCA:
 source('scripts/pca.R' )
 ```
 
+```{r, include=F}
+keep.orig <- colnames(data.smoted)
+keep.orig <- keep.orig[keep.orig!="isFraud"]
+```
+
 Estudiar los resultados del PCA. Cada columna representa una componente principal. La fila _Proportion of Variance_ muestra el porcentaje de la varianza explicado por esa componente y la fila _Cumulative Proportion_ el porcentaje explicado por esa componente junto a todas las demás. Como puede verse, hasta la PC20 se explica el 80.3% de los datos.
 
 ```{r}
@@ -476,6 +490,12 @@ Eliminar columnas cuya correlación con la variable objetivo es inferior a 0.05 
 source('scripts/objetive_correlations.R')
 # DIM(data) = 42.359 x 14
 ```
+
+```{r, include=F}
+keep.pca <- colnames(data)
+keep.pca <- keep.pca[keep.pca!="isFraud"]
+```
+
 
 ### Entrenar
 
@@ -517,19 +537,50 @@ validate(rf, xgb, val)
 plot_metrics(rf, xgb, val)
 ```
 
-En general, los resultados son significativamente mejores que en el primer experimento (donde se alcanzó un AUC de 0.87), pero ligeramente peores que en el segundo (donde se obtuvo un AUC de 0.99). Aun así, las métricas evidencian que la transformación realizada por el PCA y la posterior selección de componentes, junto a la generación de ejemplos con SMOTE, han sido buenas defisiones, pues los resultados son bastante satisfactorios.
+En este caso, Random Forest supera a xgboost en todas las métricas, sin excepciones. Tanto el _AUC_, como _Sensitivity_, _Specificity_ y _Kappa_ están por encima. Además, llama la atención que la _Sensitivity_ es mayor que la _Specificity_ en ambos modelos, lo que significa que los dos clasifican mejor los fraudes que los no fraudes. Por último, con respecto al Kappa, Random Forest obtiene 0.76, un valor considerado como "sustancial".
 
-Con respecto a los modelos, Random Forest vuelve a estar ligeramente por encima de Extreme Gradient Boosting (AUC de 0.95 frente a 0.93).
+El AUC es significativamente mejor que en el primer experimento (0.94 frente a 0.87), pero ligeramente inferior que en el segundo (0.94 frente a 0.99). Aun así, las métricas evidencian que la transformación realizada por el PCA y la posterior selección de componentes, junto a la generación de ejemplos con SMOTE, han sido buenas decisiones. Los resultados son bastante satisfactorios, aunque no llegan a igualar al segundo experimento. Posiblemente, si no se hubiesen sacrificado las variables categóricas, los resultados serían mejores.
 
 ---
 
-# Test y conclusión
+# Test
+
+La siguiente tabla resume las métricas más relevantes obtenidas sobre el conjunto de validación en todos los experimentos:
+
+|  Modelo 	|  AUC  	| Sensitivity 	| Specificity 	| Kappa 	|
+|:-------:	|:-----:	|:-----------:	|:-----------:	|:-----:	|
+|  RF(V1) 	|  0.84 	|     0.82    	|     0.71    	|  0.54 	|
+| XGB(V1) 	|  0.87 	|     0.84    	|     0.74    	|  0.58 	|
+|  RF(V2) 	| 0.992 	|     0.98    	|    0.933    	| 0.916 	|
+| XGB(V2) 	|  0.99 	|     0.97    	|    0.937    	| 0.911 	|
+|  RF(V3) 	|  0.94 	|     0.92    	|     0.85    	|  0.76 	|
+| XGB(V3) 	|  0.92 	|     0.9     	|     0.8     	|  0.7  	|
+
+Según la validación, el mejor modelo es **Random Forest del experimento 2**, seguido de **Random Forest del experimento 3**. Esta afirmación deriva de que RF(V2) es el que mayor AUC y coeficiente de Kappa presenta, seguido por RF(V3).
+
+A continuación, se evaluará el mejor modelo (RF(V2)) sobre el cojunto de test. El primer paso es cargar ambos ficheros y unirlos por la columna `TransactionID`. En este caso no se emplea el _inner join_ porque no podemos eliminar filas. _left join_ colocará NA en aquellas transacciones que no tengan información de identidad asociada: 
 
 ```{r, message=F}
 test.raw <- read_csv('ieee-fraud-detection/test_transaction.csv')
 test.id.raw <- read.csv('ieee-fraud-detection/test_identity.csv')
 test.full <- left_join(test.raw, test.id.raw, by = 'TransactionID')
+# Para ahorrar memoria:
+remove(test.raw, test.id.raw)
+# Mostrar información sobre el conjunto de test:
+as.data.frame(df_status(test.full))
 ```
+
+Puede verse que presenta una gran cantidad de valores perdidos.
+
+Renombramos algunas de las columnas de test que no tienen el mismo nombre que en train:
+
+```{r}
+colnames(test.full) <- gsub("id.", "id_", colnames(test.full))
+```
+
+Aplicamos el mismo preprocesamiento que se aplicó a los datos de train del experimento 2. 
+
+Extraer las columnas indicadas por `earth`:
 
 ```{r}
 data <- test.full %>% 
@@ -539,26 +590,96 @@ data <- test.full %>%
     R_emaildomain, V207)) %>%
   mutate(ProductCD = as.factor(ProductCD)) %>%
   mutate(R_emaildomain = as.factor(R_emaildomain))
+```
 
+Imputar los valores perdidos. Previamante a la imputación se modifican los _levels_ del _factor_ `ProductCD`. Esto se realiza porque en esta columna del test aparecen valores que no se tuvieron en cuenta en train, lo que supone un problema para Random Forest. La solución es eliminar esos valores (asignarle NA) y luego imputarlos. `lev` es una variable que contiene los _levels_ del _factor_ utilizado en train.
+
+Por otro lado, la imputación que se realiza en test es diferente a la que se realiza en train. En test no es posible realizar la imputación de variables categóricas utilizando kNN (R no puede alojar un vector de 300 GB), por lo que en lugar de eso, los datos categóricos se imputarán de forma aleatoria pero siguiendo una determinada probabilidad. La probabilidad de cada valor es proprocional al porcentaje de veces que aparece en el propio conjunto. De esta forma, se mantiene la misma proporción en la muestra, aunque ubicada de forma aleatoria. Los datos numéricos si se imputan de la misma manera. Esto claramente afectará a la calidad de los resultados (pues el preprocesamiento no es exactamente el mismo en ambos conjunto) pero es la única forma de poder realizarlo. 
+
+```{r}
 data$ProductCD <- factor(data$ProductCD, levels = lev)
-
 source('scripts/imputateV2.R')
 ```
+
+Cargar el modelo y realizar la predicción:
 
 ```{r}
 final.model <- readRDS('models/rf_v2.rds')
 pred <- predict(final.model, data, type = 'prob')
 ```
 
+Escribir el CSV que se enviará a Kaggle:
+
 ```{r}
 results <- test.full %>%
   select(TransactionID) %>%
   mutate(isFraud = pred$Yes)
 
-write_csv(results, 'res.csv')
+write_csv(results, 'res_rfv2.csv')
 ```
 
-AUC = 0.752754
+Kaggle nos devuelve un **AUC de 0.752754**. El resultado es claramente muchísimo más bajo que el que se obtuvo en train. Esto puede deberse a dos motivos:
+
+1. La imputación de los valores perdidos en distinta en train y test. Esto afecta a la calidad, pero no hay otra solución.
+2. El modelo entrenado presenta sobreajuste (aprende muy bien el conjunto de entrenamiento pero luego no es capaz de generalizar apropiadamente). El conjunto que se empleó para entrenar y validar es muchísimo más reducido que el que se emplea para testear (22.636 observaciones frente a 506.691). Al ser tan pocos datos en train, es bastante posible que el modelo los haya sobreaprendido, de ahí que de unas métricas tan excelentes (0.99 en AUC). La realidad es que luego no se comporta tan bien al ver datos nunca antes vistos.
+
+A continuación, se probabrá el desempeño del segundo mejor modelo (RF(V3)) en el conjunto de test. Aplicamos el mismo preprocesamiento que se aplicó en train:
+
+Convertir cada columna a su tipo de dato:
+
+```{r}
+data <- test.full %>%
+  mutate_if(is.logical, as.numeric) %>%
+  mutate_at(vars(contains('card')), as.factor) %>%
+  mutate(ProductCD = as.factor(ProductCD)) %>%
+  mutate_at(vars(contains('addr')), as.factor) %>%
+  mutate_at(vars(contains('emaildomain')), as.factor) %>%
+  mutate_at(paste0("M", 1:9), as.factor) %>%
+  mutate_at(vars(contains('Device')), as.factor) %>%
+  mutate_at(paste0("id_", 12:36), as.factor) %>%
+  select(-c(TransactionID))
+```
+
+Escoger las mismas columnas que se mantuvieron en train (almacenadas en la variable `keep.orig`) e imputar. En este caso, no hay variables categóricas, por lo que la imputación es la misma en train y test. Un problema menos a la hora de evaluar el desempeño del modelo:
+
+```{r}
+data <- data %>%
+  select(all_of(keep.orig))
+
+source('scripts/imputateV2.R')
+```
+
+Transformamos los datos al espacio del PCA: 
+
+```{r, message=F, warning=F}
+data <- as.data.frame(predict(data.pca, newdata = data))
+```
+
+Por último, seleccionamos la mismas componentes, deshechando también las que se eliminaron tras estudiar la correlación con la variable objetivo (almacendas en `keep.pca`):
+
+```{r}
+data <- data %>%
+  select(all_of(keep.pca))
+```
+
+Cargar el modelo, predecir y generar el CSV para Kaggle:
+
+```{r}
+final.model <- readRDS('models/rf_v3.rds')
+pred <- predict(final.model, data, type = 'prob')
+
+results <- test.full %>%
+  select(TransactionID) %>%
+  mutate(isFraud = pred$Yes)
+
+write_csv(results, 'res_rfv3.csv')
+```
+
+Se obtiene un **AUC de 0.786960**. Como era de esperar se obtienen resultados mejores que con el anterior, pero tampoco es una mejora remarcable. Esto me hace pensar que el problema de los modelos no es el sobreajuste, si no los NA. En train se eliminaban aquellas columnas con más de un 50% de valores perdidos porque imputarlas no daría buenos resultados. En este caso, no ha sido posible eliminarlas y, como era de esperar, la imputación ha afectado negativamente a la calidad de los resultados.
+
+---
+
+# Conclusión
 
 ---
 
@@ -575,6 +696,10 @@ AUC = 0.752754
 - http://amunategui.github.io/smote/
 - https://rpubs.com/Mentors_Ubiqum/removing_outliers
 - [Stackexchange - CrossValidated: replacement by mean vs median](https://stats.stackexchange.com/questions/143700/which-is-better-replacement-by-mean-and-replacement-by-median)
+- https://scikit-learn.org/stable/modules/generated/sklearn.metrics.classification_report.html
+- https://scikit-learn.org/stable/modules/generated/sklearn.metrics.cohen_kappa_score.html
+- https://scikit-learn.org/stable/modules/generated/sklearn.metrics.recall_score.html
+- https://stats.stackexchange.com/questions/82162/cohens-kappa-in-plain-english
 
 
 
