@@ -19,11 +19,11 @@ Antes que nada, para el desarrollo de la práctica se utilizarán los siguientes
 
 - `tidyverse`: para el manejo de los dataframes.
 - `funModeling` y `ggplot2`: para el análisis exploratorio de los datos.
-- `VIM`: para la imputación de variables perdidas.
+- `VIM`: para la imputación de valores perdidos.
 - `caret`: para entrenar y validar modelos de clasificación.
 - `pROC`: para calcular la curva ROC en la validación de los modelos.
 - `earth`: para realizar la selección de características importantes.
-- `DMwR`: para el método SMOTE.
+- `DMwR`: para generar ejemplos con el método SMOTE.
 
 ```{r results='hide', message=FALSE, warning=FALSE}
 library(tidyverse)
@@ -44,12 +44,12 @@ Los datos están divididos en dos archivos `transaction` e `identity` (los cuale
 
 - `isFraud`: variable objetivo: 1 es fraude, 0 no lo es.
 - `TransactionDT`: timedelta a partir de una fecha-hora de referencia dada (no es una marca de tiempo).
-- `TransactionAMT`: importe de pago de la transacción en USD.
+- `TransactionAmt`: importe de pago de la transacción en USD.
 - `ProductCD`: código de producto, el producto para cada transacción.
 - `card1 - card6`: información de la tarjeta de pago, como el tipo de tarjeta, la categoría de la tarjeta, el banco emisor, el país, etc.
-- `addr`: dirección
-- `dist`: distancia
-- `P_ y R_ emaildomain`: dominio de correo electrónico del comprador y del destinatario
+- `addr`: dirección.
+- `dist`: distancia.
+- `P_` y `R_ emaildomain`: dominio de correo electrónico del comprador y del destinatario.
 - `C1-C14`: contadores, como cuántas direcciones se encuentran asociadas a la tarjeta de pago, etc. El significado real está enmascarado.
 - `D1-D15`: tiempo de espera, como por ejemplo, los días transcurridos entre la transacción anterior, etc.
 - `M1-M9`: coincidencias, en los nombres, en la tarjeta, la dirección, etc.
@@ -75,7 +75,7 @@ Se realizarán un total de **3 experimentos**, cada uno de ellos, con un preproc
 
 # Modelos empleados
 
-En este apartado se describen aquellos algoritmos de clasificación que se aplicarán para intentar predecir si una transacción bancaria es o no fraudulenta. Para que la comparación entre los preprocesamientos realizados sea justa, los modelos empleados en todas las pruebas son los mismos. También se mantienen los mismos hiperparámetros, los cuales han sido fijados con el conjunto datos preprocesado del [experimento 1](#experimento-1): 
+En este apartado se describen aquellos algoritmos de clasificación que se aplicarán para intentar predecir si una transacción online es o no fraudulenta. Para que la comparación entre los preprocesamientos realizados sea justa, los modelos empleados en todas las pruebas son los mismos. También se mantienen los mismos hiperparámetros, los cuales han sido fijados con el conjunto datos preprocesado del [experimento 1](#experimento-1): 
 
 1. `Random Forest`: se trata de un metaestimador que ajusta un número determinado de árboles de decisión a varias submuestras. Se ha escogido este modelo para este problema simplemente por experiencia. En el pasado he trabajado en varios problemas de clasificación sobre conjuntos de datos muy similares a los que se obtienen tras preprocesar el _IEEE Fraud Detection_ (aproximadamente 40.000 datos, decenas de columnas y datos numéricos y categóricos). En esos problemas, Random Forest fue el método que mejores resultados obtuvo. En general, los _ensembles_ de clasificadores son bastante robustos y Random Forest es el ejemplo clásico de ensemble. Los hiperparámetros fijados han sido dos: el número de árboles (600) y el número de características a elegir en cada muestra (10). Para escogerlos, se ha hecho validación cruzada de 5 folds sobre una submuestra del conjunto de entrenamiento, con 5.000 ejemplos aleatorios de cada clase (para hacer su elección mucho más eficiente).
 2. `Extreme Gradient Boosting`: se trata de una implementación de `Gradient Boosting Decision Trees` diseñada teniendo en cuenta la velocidad y el rendimiento. Gradient Boosting es un enfoque en el que se añaden nuevos modelos (boosting) que predicen los residuos o errores de modelos anteriores y luego se suman para hacer la predicción final. Se llama Gradient Boosting porque utiliza el algoritmo del gradiente descendente para minimizar la pérdida al agregar nuevos modelos (que en este caso son árboles de decisión). Se ha escogido este modelo por su eficiencia y también porque está ampliamente utilizado en las competiciones de Kaggle con resultados excelentes, además de que puede manejar sin problemas variables categóricas e incluso valores perdidos. Su principal inconveniente es que presenta una gran cantidad de hiperparámetros, por lo que para escoger sus valores óptimos, se ha dejado que caret los elija de forma automática de entre los valores por defecto, utilizando un subjunto de 1.000 ejemplos aleatorios de cada clase. Consulte `scripts/train_xgb.R` para más información.
@@ -122,7 +122,7 @@ ggplot(data.raw) +
   geom_histogram(aes(x=TransactionAmt, fill=as.factor(isFraud))) +
   labs(title = "Original data", x = "Transaction Amount", y = "# Transactions", fill = "isFraud")
 
-# Histograma con escala logrítmica en el eje X:
+# Histograma con escala logrítmica en ambos ejes:
 ggplot(data.raw) + 
   geom_histogram(aes(x=TransactionAmt, fill=as.factor(isFraud))) +
   labs(title = "Log scale", x = "Transaction Amount", y = "# Transactions", fill = "isFraud") +
@@ -157,7 +157,7 @@ Más o menos sigue en la misma línea que el otro dataset:
 dim(data.id.raw)
 ```
 
-Este dataset incluye 40 características nuevas a las 393 ya existentes (si no contamos el id). Por otro lado, reduce el número de filas, pues solo 144.233 ejemplos tienen informacion de identidad. Si ambos conjuntos de datos se uniese, se eliminarían 446.307 observaciones, por lo que puede resultar útil para reducir la dimensionalidad.
+Este fichero incluye 40 características nuevas a las 393 ya existentes (si no se tiene en cuenta el id). Por otro lado, reduce el número de filas, pues solo 144.233 ejemplos tienen informacion de identidad. Si ambos conjuntos de datos se uniesen, se eliminarían 446.307 observaciones, por lo que puede resultar útil para reducir la dimensionalidad.
 
 ---
 
@@ -167,13 +167,13 @@ En este apartado se describen los distintos experimentos realizados. Cada prueba
 
 1. Preprocesamiento de los datos: esta es la única fase que varía de un experimento a otro. Cada prueba aplica un preprocesamiento distinto al conjunto.
 2. Entrenamiento de los modelos descritos en la [sección 2](#modelos-empleados). Para que la comparación de preprocesamientos (el principal objetivo de la práctica) sea justa, todos los modelos se entrenarán bajo las mismas condiciones.
-3. Validación de los modelos. Se evaluan y comparan los modelos entrenados en la fase anterior calculando la curva ROC y el área bajo la curva ROC. Estas métricas serán las que se utilicen para elegir el mejor preprocesamiento de todos los realizados y también para elegir el mejor modelo entrenado.
+3. Validación de los modelos. Se evaluan y comparan los modelos entrenados en la fase anterior calculando la curva ROC, el área bajo la curva ROC, sensitivity, specificity y Kappa. Estas métricas serán las que se utilicen para elegir el mejor preprocesamiento de todos los realizados y también para elegir el mejor modelo entrenado.
 
 > Nota: el código que realiza el preprocesamiento y entrenamiento de los modelos no se ha incluido en esta memoria para mantener su simplicidad y facilitar su lectura. En cada apartado se indica cuáles han sido los scripts ejecutados. Si desea consultar su contenido, puede encontrarlos bajo el directorio `scripts/`. Incluyen comentarios explicativos.
 
 ## Experimento 1
 
-A continuación se describe brevemente el preprocesamiento realizado en este primer experimento, en el que solo se ha utilizado el dataset `train_transaction.csv` (no se han incluido las columnas del dataset `identity`):
+A continuación se describe brevemente el preprocesamiento realizado en este primer experimento, en el que solo se ha utilizado el dataset `transaction` (no se han incluido las columnas del dataset `identity`):
 
 - Borrar columnas con más de un 5% de valores perdidos. Asumiendo que el dataset incluye 590.540 ejemplos, que una columna presente tan solo un 15% de valores perdidos, implica que 88.581 muestras no tienen valor para ese campo. Son demasiados valores como para poder imputarlos. Por este motivo, todas aquellas columnas con más de un 5% de valores perdidos son descartadas. Es una condición bastante restrictiva, pero teniendo en cuenta que hay que reducir la dimensionalidad del dataset (y que la capacidad computacional de mi máquina no es muy elevada) es la única manera de hacer el conjunto más manejable, aunque por supuesto, seguramente estemos perdiendo información relevante.
 - Borrar columnas con más de un 70% de 0. La justificación es la misma que en el paso anterior. Sacrificamos información a cambio de hacer el dataset abarcable para nuestra capacidad computacional. El procentaje se ha escogido teniendo en cuenta la información extraída en el análisis exploratorio (tabla `df_status`).
@@ -181,7 +181,7 @@ A continuación se describe brevemente el preprocesamiento realizado en este pri
 - Muestrear aleatoriamente tantos ejemplos de la clase 0 como ejemplos hay de la clase 1 (downsample). Con esto conseguimos balancear perfectamente el dataset.
 - Imputar valores perdidos para la clase 1:
   - Para las variables categóricas se emplea la imputación KNN.
-  - Las variable numéricas, son imputadas con la media de cada columna. Posiblemente este no sea el método más sofisticado, pero ha sido el único abarcable computacionalmente. Previamente a este decisión se intentó utilizar le paquete `MICE` para la imputación, pero no llegué a obtener ningún resultado (el ordenador se quedaba colgado por demasiada carga de trabajo). 
+  - Las variable numéricas, son imputadas con la media de cada columna. Posiblemente este no sea el método más sofisticado, pero ha sido el único abarcable computacionalmente. Previamente a este decisión se intentó utilizar el paquete `MICE` para la imputación, pero no llegué a obtener ningún resultado (el ordenador se quedaba colgado por demasiada carga de trabajo). 
 - Calcular la correlación de cada variable con la variable objetivo (`isFraud`) y eliminar todas aquellas con una correlación inferior a 0.05. Inicialmente el valor mínimo se fijó a 0.01, pero solo se eliminaba una columna, así que se aumentó para hacerlo más restrictivo.
 
 Estos son los scripts ejecutados para preprocesar. Tras cada paso se muestra con un comentario como varía el tamaño del dataset:
@@ -256,7 +256,7 @@ Se obtiene un Accuracy en train de 0.782.
 
 ### Validar
 
-Por último, para comparar ambos modelos y poder valorar la bondad del preprocesamiento realizado, se dibujarán las curvas ROC y se calcularán las áreas bajo la curva ROC sobre el conjunto de validación previamente reservado. Puesto que será una operación que se realizará varias veces a lo largo de esta memoria, se creará una función:
+Por último, para comparar ambos modelos y poder valorar la bondad del preprocesamiento realizado, se dibujarán las curvas ROC y se calcularán las métricas mencionadas en apartados anteriores sobre el conjunto de validación previamente reservado. Puesto que será una operación que se realizará varias veces a lo largo de esta memoria, se creará una función:
 
 ```{r}
 validate <- function(model1, model2, valdata) {
@@ -464,7 +464,7 @@ keep.orig <- colnames(data.smoted)
 keep.orig <- keep.orig[keep.orig!="isFraud"]
 ```
 
-Estudiar los resultados del PCA. Cada columna representa una componente principal. La fila _Proportion of Variance_ muestra el porcentaje de la varianza explicado por esa componente y la fila _Cumulative Proportion_ el porcentaje explicado por esa componente junto a todas las demás. Como puede verse, hasta la PC20 se explica el 80.3% de los datos.
+Estudiar los resultados del PCA. Cada columna representa una componente principal. La fila _Proportion of Variance_ muestra el porcentaje de la varianza explicado por esa componente y la fila _Cumulative Proportion_ el porcentaje explicado por esa componente junto a todas las anteriores. Como puede verse, hasta la PC20 se explica el 80.3% de los datos.
 
 ```{r}
 as.data.frame(summary(data.pca)$importance)
@@ -549,36 +549,42 @@ La siguiente tabla resume las métricas más relevantes obtenidas sobre el conju
 
 |  Modelo 	|  AUC  	| Sensitivity 	| Specificity 	| Kappa 	|
 |:-------:	|:-----:	|:-----------:	|:-----------:	|:-----:	|
-|  RF(V1) 	|  0.84 	|     0.82    	|     0.71    	|  0.54 	|
-| XGB(V1) 	|  0.87 	|     0.84    	|     0.74    	|  0.58 	|
-|  RF(V2) 	| 0.992 	|     0.98    	|    0.933    	| 0.916 	|
-| XGB(V2) 	|  0.99 	|     0.97    	|    0.937    	| 0.911 	|
-|  RF(V3) 	|  0.94 	|     0.92    	|     0.85    	|  0.76 	|
-| XGB(V3) 	|  0.92 	|     0.9     	|     0.8     	|  0.7  	|
+|  RF (V1) 	|  0.84 	|     0.82    	|     0.71    	|  0.54 	|
+| XGB (V1) 	|  0.87 	|     0.84    	|     0.74    	|  0.58 	|
+|  RF (V2) 	| 0.992 	|     0.98    	|    0.933    	| 0.916 	|
+| XGB (V2) 	|  0.99 	|     0.97    	|    0.937    	| 0.911 	|
+|  RF (V3) 	|  0.94 	|     0.92    	|     0.85    	|  0.76 	|
+| XGB (V3) 	|  0.92 	|     0.9     	|     0.8     	|  0.7  	|
 
-Según la validación, el mejor modelo es **Random Forest del experimento 2**, seguido de **Random Forest del experimento 3**. Esta afirmación deriva de que RF(V2) es el que mayor AUC y coeficiente de Kappa presenta, seguido por RF(V3).
+Según la validación, el mejor modelo es **Random Forest del experimento 2**, seguido de **Random Forest del experimento 3**. Esta afirmación deriva de que RF (V2) es el que mayor AUC y coeficiente de Kappa presenta, seguido por RF (V3).
 
-A continuación, se evaluará el mejor modelo (RF(V2)) sobre el cojunto de test. El primer paso es cargar ambos ficheros y unirlos por la columna `TransactionID`. En este caso no se emplea el _inner join_ porque no podemos eliminar filas. _left join_ colocará NA en aquellas transacciones que no tengan información de identidad asociada: 
+A continuación, se evaluará el mejor modelo (RF (V2)) sobre el cojunto de test. El primer paso es cargar ambos ficheros y unirlos por la columna `TransactionID`. En este caso no se emplea el _inner join_ porque no podemos eliminar filas. _left join_ colocará NA en aquellas transacciones que no tengan información de identidad asociada: 
 
 ```{r, message=F}
 test.raw <- read_csv('ieee-fraud-detection/test_transaction.csv')
 test.id.raw <- read.csv('ieee-fraud-detection/test_identity.csv')
 test.full <- left_join(test.raw, test.id.raw, by = 'TransactionID')
-# Para ahorrar memoria:
-remove(test.raw, test.id.raw)
-# Mostrar información sobre el conjunto de test:
-as.data.frame(df_status(test.full))
 ```
 
-Puede verse que presenta una gran cantidad de valores perdidos.
+```{r, include=F}
+# Para ahorrar memoria:
+remove(test.raw, test.id.raw)
+```
 
-Renombramos algunas de las columnas de test que no tienen el mismo nombre que en train:
+```{r}
+# Mostrar información sobre el conjunto de test:
+as.data.frame(df_status(test.full, F))
+```
+
+Puede verse que, al igual que el conjunto de train, presenta una gran cantidad de valores perdidos. Sin embargo, en este caso no podemos eliminar filas. Habrá que imputar todos los valores.
+
+Antes que nada, renombramos algunas de las columnas de test que no tienen el mismo nombre que en train:
 
 ```{r}
 colnames(test.full) <- gsub("id.", "id_", colnames(test.full))
 ```
 
-Aplicamos el mismo preprocesamiento que se aplicó a los datos de train del experimento 2. 
+Ahora sí, aplicamos el mismo preprocesamiento que se aplicó a los datos de train del [experimento 2](#experimento-2). 
 
 Extraer las columnas indicadas por `earth`:
 
@@ -623,7 +629,7 @@ Kaggle nos devuelve un **AUC de 0.752754**. El resultado es claramente muchísim
 1. La imputación de los valores perdidos en distinta en train y test. Esto afecta a la calidad, pero no hay otra solución.
 2. El modelo entrenado presenta sobreajuste (aprende muy bien el conjunto de entrenamiento pero luego no es capaz de generalizar apropiadamente). El conjunto que se empleó para entrenar y validar es muchísimo más reducido que el que se emplea para testear (22.636 observaciones frente a 506.691). Al ser tan pocos datos en train, es bastante posible que el modelo los haya sobreaprendido, de ahí que de unas métricas tan excelentes (0.99 en AUC). La realidad es que luego no se comporta tan bien al ver datos nunca antes vistos.
 
-A continuación, se probabrá el desempeño del segundo mejor modelo (RF(V3)) en el conjunto de test. Aplicamos el mismo preprocesamiento que se aplicó en train:
+A continuación, se probabrá el desempeño del segundo mejor modelo (RF (V3)) en el conjunto de test. Aplicamos el mismo preprocesamiento que se aplicó en train:
 
 Convertir cada columna a su tipo de dato:
 
@@ -675,7 +681,7 @@ results <- test.full %>%
 write_csv(results, 'res_rfv3.csv')
 ```
 
-Se obtiene un **AUC de 0.786960**. Como era de esperar se obtienen resultados mejores que con el anterior, pero tampoco es una mejora remarcable. Esto me hace pensar que el problema de los modelos no es el sobreajuste, si no los NA. En train se eliminaban aquellas columnas con más de un 50% de valores perdidos porque imputarlas no daría buenos resultados. En este caso, no ha sido posible eliminarlas y, como era de esperar, la imputación ha afectado negativamente a la calidad de los resultados.
+Se obtiene un **AUC de 0.786960**. Como era de esperar se obtienen resultados mejores que con el anterior, pero tampoco es una mejora remarcable. Esto me hace pensar que el problema de los modelos no es el sobreajuste, sino los NA. En train se eliminaban aquellas columnas con más de un 50% de valores perdidos porque imputarlas no daría buenos resultados. En este caso, no ha sido posible eliminarlas y, como era de esperar, la imputación ha afectado negativamente a la calidad de los resultados.
 
 ---
 
